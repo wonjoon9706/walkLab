@@ -8,6 +8,7 @@ import { HistoryPage } from '../pages/HistoryPage'
 import { LoginPage } from '../pages/LoginPage'
 import { MeasurementPage } from '../pages/MeasurementPage'
 import { SessionDetailPage } from '../pages/SessionDetailPage'
+import { MeasurementProvider } from '../features/measurement/MeasurementProvider'
 
 export function AppRoutes() {
   return (
@@ -29,7 +30,9 @@ export function AppRouter() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
+        <MeasurementProvider>
+          <AppRoutes />
+        </MeasurementProvider>
       </AuthProvider>
     </BrowserRouter>
   )

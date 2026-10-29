@@ -173,6 +173,69 @@ h1 {
   text-decoration: none;
 }
 
+.measurement-summary {
+  border-color: #99b9ad;
+}
+
+.measurement-state {
+  margin: 0.5rem 0 1.25rem;
+  color: #27634f;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.measurement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.measurement-grid div {
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  background: #f1f6f3;
+}
+
+.measurement-grid dt {
+  color: #566b63;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.measurement-grid dd {
+  margin: 0.25rem 0 0;
+  font-weight: 800;
+}
+
+.measurement-actions button {
+  width: 100%;
+  min-height: 3.5rem;
+  font-size: 1.1rem;
+}
+
+.warning-card {
+  border-color: #decf9b;
+  background: #fffdf4;
+}
+
+.warning-card ul {
+  margin-bottom: 0;
+  padding-left: 1.25rem;
+  line-height: 1.6;
+}
+
+.disabled-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  border-radius: 0.65rem;
+  padding: 0.7rem 1rem;
+  color: #64736e;
+  background: #e3e8e6;
+  font-weight: 700;
+}
+
 @media (max-width: 30rem) {
   .page-shell {
     padding: 2rem 0;
@@ -185,5 +248,9 @@ h1 {
 
   .auth-form > button:not(.text-button) {
     width: 100%;
+  }
+
+  .measurement-grid {
+    grid-template-columns: 1fr;
   }
 }

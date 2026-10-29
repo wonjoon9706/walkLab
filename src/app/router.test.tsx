@@ -17,12 +17,41 @@ import {
   testUser,
 } from '../test/fakeAuthService'
 import { AppRoutes } from './router'
+import { MeasurementContext } from '../features/measurement/measurementContext'
+import type { MeasurementContextValue } from '../features/measurement/measurementContext'
 
-function renderRoute(path: string, service: AuthService) {
+const idleMeasurement: MeasurementContextValue = {
+  status: 'idle',
+  sessionId: null,
+  ownerUserId: null,
+  startedAt: null,
+  endedAt: null,
+  savedPointCount: 0,
+  failedSaveCount: 0,
+  firstSavedSequenceNo: null,
+  lastSavedSequenceNo: null,
+  nullOptionalFieldCount: 0,
+  lastReceivedAt: null,
+  gpsStatus: 'idle',
+  localSaveStatus: 'idle',
+  networkOnline: true,
+  message: null,
+  isActive: false,
+  startMeasurement: vi.fn(),
+  stopMeasurement: vi.fn(),
+}
+
+function renderRoute(
+  path: string,
+  service: AuthService,
+  measurement: MeasurementContextValue = idleMeasurement,
+) {
   render(
     <MemoryRouter initialEntries={[path]}>
       <AuthProvider service={service}>
-        <AppRoutes />
+        <MeasurementContext.Provider value={measurement}>
+          <AppRoutes />
+        </MeasurementContext.Provider>
       </AuthProvider>
     </MemoryRouter>,
   )
@@ -126,6 +155,62 @@ describe('인증 라우팅', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByText('로그인 세션이 만료되었습니다. 다시 로그인해 주세요.'),
+    ).toBeInTheDocument()
+  })
+
+  it('측정 중 인증이 만료되면 측정 홈을 유지한다', async () => {
+    let authChangeListener: ((change: AuthChange) => void) | null = null
+    const service = createFakeAuthService({
+      getCurrentUser: vi.fn().mockResolvedValue(testUser),
+      subscribeToAuthChanges: vi.fn((listener) => {
+        authChangeListener = listener
+        return () => undefined
+      }),
+    })
+    const activeMeasurement: MeasurementContextValue = {
+      ...idleMeasurement,
+      status: 'recording',
+      isActive: true,
+      sessionId: 'session-1',
+      ownerUserId: testUser.id,
+      startedAt: '2026-10-29T00:00:00.000Z',
+      gpsStatus: 'receiving',
+    }
+    renderRoute('/', service, activeMeasurement)
+    await screen.findByRole('heading', { name: '측정 홈' })
+
+    act(() => {
+      authChangeListener?.({ event: 'SIGNED_OUT', user: null })
+    })
+
+    expect(
+      await screen.findByText(/로그인 세션이 만료됐지만 GPS와 로컬 저장은 계속됩니다/),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: '이메일 OTP 로그인' }),
+    ).toBeNull()
+  })
+
+  it('측정 중 로그아웃 요청은 종료 안내만 표시한다', async () => {
+    const service = createFakeAuthService({
+      getCurrentUser: vi.fn().mockResolvedValue(testUser),
+    })
+    const activeMeasurement: MeasurementContextValue = {
+      ...idleMeasurement,
+      status: 'recording',
+      isActive: true,
+      sessionId: 'session-1',
+      ownerUserId: testUser.id,
+      startedAt: '2026-10-29T00:00:00.000Z',
+      gpsStatus: 'receiving',
+    }
+    renderRoute('/', service, activeMeasurement)
+
+    fireEvent.click(await screen.findByRole('button', { name: '로그아웃' }))
+
+    expect(service.signOut).not.toHaveBeenCalled()
+    expect(
+      screen.getByText('측정 종료 버튼을 누른 뒤 로그아웃해 주세요.'),
     ).toBeInTheDocument()
   })
 
