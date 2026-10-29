@@ -19,6 +19,19 @@ import {
 import { AppRoutes } from './router'
 import { MeasurementContext } from '../features/measurement/measurementContext'
 import type { MeasurementContextValue } from '../features/measurement/measurementContext'
+import { SyncContext, type SyncContextValue } from '../features/sync/syncContext'
+
+const idleSync: SyncContextValue = {
+  status: 'idle',
+  pendingCount: 0,
+  confirmedCount: 0,
+  failedCount: 0,
+  lastSyncedAt: null,
+  message: null,
+  runSync: vi.fn(),
+  notifyPointSaved: vi.fn(),
+  notifyMeasurementStopped: vi.fn(),
+}
 
 const idleMeasurement: MeasurementContextValue = {
   status: 'idle',
@@ -49,9 +62,11 @@ function renderRoute(
   render(
     <MemoryRouter initialEntries={[path]}>
       <AuthProvider service={service}>
-        <MeasurementContext.Provider value={measurement}>
-          <AppRoutes />
-        </MeasurementContext.Provider>
+        <SyncContext.Provider value={idleSync}>
+          <MeasurementContext.Provider value={measurement}>
+            <AppRoutes />
+          </MeasurementContext.Provider>
+        </SyncContext.Provider>
       </AuthProvider>
     </MemoryRouter>,
   )

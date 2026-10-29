@@ -25,6 +25,10 @@ function createClientMock() {
       data: { user },
       error: null,
     }),
+    refreshSession: vi.fn().mockResolvedValue({
+      data: { session: { user } as Session },
+      error: null,
+    }),
     onAuthStateChange: vi.fn(() => ({
       data: {
         subscription: {
@@ -108,5 +112,15 @@ describe('AuthService', () => {
     await service.signOut()
 
     expect(auth.signOut).toHaveBeenCalledOnce()
+  })
+
+  it('401 복구 시 SDK가 관리하는 세션을 새로 고친다', async () => {
+    const { auth, client } = createClientMock()
+    const service = createAuthService(client)
+
+    const user = await service.refreshCurrentUser()
+
+    expect(auth.refreshSession).toHaveBeenCalledOnce()
+    expect(user?.id).toBe('user-123')
   })
 })

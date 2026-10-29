@@ -23,6 +23,7 @@ export interface AuthService {
     token: string,
   ) => Promise<AuthenticatedUser>
   getCurrentUser: () => Promise<AuthenticatedUser | null>
+  refreshCurrentUser: () => Promise<AuthenticatedUser | null>
   subscribeToAuthChanges: (
     listener: (change: AuthChange) => void,
   ) => () => void
@@ -111,6 +112,17 @@ export function createAuthService(
       return userData.user === null
         ? null
         : toAuthenticatedUser(userData.user)
+    },
+
+    async refreshCurrentUser() {
+      const configuredClient = requireSupabaseClient(client)
+      const { data, error } = await configuredClient.auth.refreshSession()
+
+      if (error !== null) {
+        throw error
+      }
+
+      return getUserFromSession(data.session)
     },
 
     subscribeToAuthChanges(listener) {

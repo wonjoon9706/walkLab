@@ -156,6 +156,20 @@ export function AuthProvider({
     return user
   }, [service])
 
+  const refreshCurrentUser = useCallback(async () => {
+    const user = await service.refreshCurrentUser()
+
+    setAuthState({
+      status: user === null ? 'expired' : 'authenticated',
+      user,
+      message:
+        user === null
+          ? '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.'
+          : null,
+    })
+    return user
+  }, [service])
+
   const signOut = useCallback(async () => {
     // G2 이후 측정 상태가 추가되면 이 guard에 종료 가능 여부를 연결한다.
     if (!canSignOut()) {
@@ -183,11 +197,13 @@ export function AuthProvider({
       requestEmailOtp,
       verifyEmailOtp,
       confirmCurrentUser,
+      refreshCurrentUser,
       signOut,
     }),
     [
       authState,
       confirmCurrentUser,
+      refreshCurrentUser,
       requestEmailOtp,
       signOut,
       verifyEmailOtp,

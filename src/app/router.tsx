@@ -9,6 +9,7 @@ import { LoginPage } from '../pages/LoginPage'
 import { MeasurementPage } from '../pages/MeasurementPage'
 import { SessionDetailPage } from '../pages/SessionDetailPage'
 import { MeasurementProvider } from '../features/measurement/MeasurementProvider'
+import { SyncProvider } from '../features/sync/SyncProvider'
 
 export function AppRoutes() {
   return (
@@ -30,9 +31,11 @@ export function AppRouter() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <MeasurementProvider>
-          <AppRoutes />
-        </MeasurementProvider>
+        <SyncProvider>
+          <MeasurementProvider>
+            <AppRoutes />
+          </MeasurementProvider>
+        </SyncProvider>
       </AuthProvider>
     </BrowserRouter>
   )

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../features/auth/authContext'
 import { useMeasurement } from '../features/measurement/measurementContext'
 import { getAuthErrorMessage } from '../services/auth/authErrorMessage'
+import { useSync } from '../features/sync/syncContext'
 
 const statusLabels = {
   idle: '대기',
@@ -28,6 +29,16 @@ const localStatusLabels = {
   failed: '저장 실패',
 } as const
 
+const syncStatusLabels = {
+  idle: '대기',
+  syncing: '동기화 중',
+  synced: '동기화 완료',
+  partial: '일부 대기',
+  auth_required: '로그인 필요',
+  offline: '오프라인',
+  error: '동기화 오류',
+} as const
+
 function formatElapsedTime(startedAt: string | null, endTime: number): string {
   if (startedAt === null) {
     return '00:00:00'
@@ -49,6 +60,7 @@ function formatElapsedTime(startedAt: string | null, endTime: number): string {
 export function MeasurementPage() {
   const { status: authStatus, user, signOut } = useAuth()
   const measurement = useMeasurement()
+  const sync = useSync()
   const [signOutError, setSignOutError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
@@ -176,6 +188,17 @@ export function MeasurementPage() {
           <p>선택 GPS 필드의 null 누계: {measurement.nullOptionalFieldCount}개</p>
         </section>
       )}
+
+      <section className="status-card" aria-labelledby="sync-title">
+        <h2 id="sync-title">서버 동기화</h2>
+        <p className="measurement-state">{syncStatusLabels[sync.status]}</p>
+        <p>
+          전송 대기 {sync.pendingCount}건 · 서버 확인 {sync.confirmedCount}건 · 문제{' '}
+          {sync.failedCount}건
+        </p>
+        {sync.lastSyncedAt !== null && <p>마지막 확인: {sync.lastSyncedAt}</p>}
+        {sync.message !== null && <p className="page-description">{sync.message}</p>}
+      </section>
 
       <section
         className="status-card warning-card"

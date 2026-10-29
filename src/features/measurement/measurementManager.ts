@@ -60,6 +60,8 @@ export interface MeasurementManagerDependencies {
   getSourcePlatform: () => string
   now: () => Date
   createId: () => string
+  onPointSaved?: (ownerUserId: string) => void
+  onMeasurementStopped?: () => void
 }
 
 const initialState: MeasurementState = {
@@ -261,6 +263,7 @@ export function createMeasurementManager(
         nullOptionalFieldCount:
           state.nullOptionalFieldCount + nullOptionalFieldCount,
       })
+      dependencies.onPointSaved?.(activeSession.ownerUserId)
     })
   }
 
@@ -458,6 +461,7 @@ export function createMeasurementManager(
             ? '측정이 종료되고 로컬에 저장되었습니다.'
             : '측정은 종료됐지만 종료 이벤트 저장에 실패했습니다.',
         })
+        dependencies.onMeasurementStopped?.()
       } catch {
         publish({
           status: 'error',

@@ -15,6 +15,7 @@ export interface AuthContextValue {
   requestEmailOtp: (email: string) => Promise<void>
   verifyEmailOtp: (email: string, token: string) => Promise<void>
   confirmCurrentUser: () => Promise<AuthenticatedUser | null>
+  refreshCurrentUser: () => Promise<AuthenticatedUser | null>
   signOut: () => Promise<boolean>
 }
 

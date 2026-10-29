@@ -4,6 +4,7 @@ import type {
   MeasurementEventType,
   MeasurementStatus,
   RawGpsPoint,
+  SyncState,
   SyncEntityType,
   SyncItem,
 } from '../../domain/measurement'
@@ -63,6 +64,32 @@ export interface LocalMeasurementRepository {
     ownerUserId: string,
     sessionId: string,
   ) => Promise<MeasurementEvent[]>
+  prepareSyncItems: (ownerUserId: string) => Promise<void>
+  listPendingSyncItems: (ownerUserId: string) => Promise<SyncItem[]>
+  listSyncItems: (ownerUserId: string) => Promise<SyncItem[]>
+  listPointsByIds: (
+    ownerUserId: string,
+    pointIds: string[],
+  ) => Promise<RawGpsPoint[]>
+  listEventsByIds: (
+    ownerUserId: string,
+    eventIds: string[],
+  ) => Promise<MeasurementEvent[]>
+  setSyncItemsState: (
+    keys: string[],
+    state: SyncState,
+    errorCode?: string | null,
+    nextRetryAt?: string | null,
+  ) => Promise<void>
+  saveDeletionCutoff: (
+    ownerUserId: string,
+    cutoff: string,
+  ) => Promise<void>
+  suppressSessionsAtOrBefore: (
+    ownerUserId: string,
+    cutoff: string,
+  ) => Promise<number>
+  getSyncSummary: (ownerUserId: string) => Promise<Record<SyncState, number>>
 }
 
 function createSyncItem(
@@ -380,6 +407,178 @@ export function createLocalMeasurementRepository(
         .where('sessionId')
         .equals(sessionId)
         .sortBy('occurredAt')
+    },
+
+    async prepareSyncItems(ownerUserId) {
+      const now = new Date().toISOString()
+
+      await database.transaction('rw', database.syncItems, async () => {
+        const allItems = await database.syncItems.toArray()
+
+        for (const item of allItems) {
+          if (item.ownerUserId === ownerUserId) {
+            if (
+              item.state === 'syncing' ||
+              item.state === 'auth_required' ||
+              item.state === 'owner_mismatch' ||
+              item.state === 'retry_wait'
+            ) {
+              await database.syncItems.update(item.key, {
+                state: 'pending',
+                updatedAt: now,
+              })
+            }
+            continue
+          }
+
+          if (
+            item.state === 'pending' ||
+            item.state === 'syncing' ||
+            item.state === 'retry_wait' ||
+            item.state === 'auth_required'
+          ) {
+            await database.syncItems.update(item.key, {
+              state: 'owner_mismatch',
+              lastErrorCode: 'CURRENT_USER_OWNER_MISMATCH',
+              updatedAt: now,
+            })
+          }
+        }
+      })
+    },
+
+    async listPendingSyncItems(ownerUserId) {
+      return database.syncItems
+        .where('ownerUserId')
+        .equals(ownerUserId)
+        .filter((item) => item.state === 'pending')
+        .sortBy('createdAt')
+    },
+
+    async listSyncItems(ownerUserId) {
+      return database.syncItems
+        .where('ownerUserId')
+        .equals(ownerUserId)
+        .sortBy('createdAt')
+    },
+
+    async listPointsByIds(ownerUserId, pointIds) {
+      const points = (await database.gpsPoints.bulkGet(pointIds)).filter(
+        (point): point is RawGpsPoint => point !== undefined,
+      )
+      const sessionIds = [...new Set(points.map((point) => point.sessionId))]
+      const sessions = await database.sessions.bulkGet(sessionIds)
+      const ownedSessionIds = new Set(
+        sessions
+          .filter(
+            (session): session is LocalWalkSession =>
+              session !== undefined && session.ownerUserId === ownerUserId,
+          )
+          .map((session) => session.id),
+      )
+
+      return points.filter((point) => ownedSessionIds.has(point.sessionId))
+    },
+
+    async listEventsByIds(ownerUserId, eventIds) {
+      const events = (
+        await database.measurementEvents.bulkGet(eventIds)
+      ).filter((event): event is MeasurementEvent => event !== undefined)
+      const sessionIds = [...new Set(events.map((event) => event.sessionId))]
+      const sessions = await database.sessions.bulkGet(sessionIds)
+      const ownedSessionIds = new Set(
+        sessions
+          .filter(
+            (session): session is LocalWalkSession =>
+              session !== undefined && session.ownerUserId === ownerUserId,
+          )
+          .map((session) => session.id),
+      )
+
+      return events.filter((event) => ownedSessionIds.has(event.sessionId))
+    },
+
+    async setSyncItemsState(
+      keys,
+      state,
+      errorCode = null,
+      nextRetryAt = null,
+    ) {
+      if (keys.length === 0) {
+        return
+      }
+
+      const now = new Date().toISOString()
+      await database.transaction('rw', database.syncItems, async () => {
+        for (const key of keys) {
+          const item = await database.syncItems.get(key)
+          if (item === undefined) {
+            continue
+          }
+
+          await database.syncItems.update(key, {
+            state,
+            attemptCount:
+              state === 'syncing' ? item.attemptCount + 1 : item.attemptCount,
+            nextRetryAt,
+            lastErrorCode: errorCode,
+            serverConfirmedAt: state === 'confirmed' ? now : null,
+            updatedAt: now,
+          })
+        }
+      })
+    },
+
+    async saveDeletionCutoff(ownerUserId, cutoff) {
+      await database.deletionCutoffs.put({
+        ownerUserId,
+        rejectSessionsStartedAtOrBefore: cutoff,
+        cachedAt: new Date().toISOString(),
+      })
+    },
+
+    async suppressSessionsAtOrBefore(ownerUserId, cutoff) {
+      const sessions = await database.sessions
+        .where('ownerUserId')
+        .equals(ownerUserId)
+        .filter((session) => session.startedAt <= cutoff)
+        .toArray()
+      const sessionIds = new Set(sessions.map((session) => session.id))
+      const items = await database.syncItems
+        .where('ownerUserId')
+        .equals(ownerUserId)
+        .filter((item) => sessionIds.has(item.sessionId))
+        .toArray()
+
+      await this.setSyncItemsState(
+        items.map((item) => item.key),
+        'suppressed_by_deletion',
+        'SESSION_SUPPRESSED_BY_DELETION',
+      )
+      return sessions.length
+    },
+
+    async getSyncSummary(ownerUserId) {
+      const items = await database.syncItems
+        .where('ownerUserId')
+        .equals(ownerUserId)
+        .toArray()
+      const summary: Record<SyncState, number> = {
+        pending: 0,
+        syncing: 0,
+        confirmed: 0,
+        retry_wait: 0,
+        failed: 0,
+        auth_required: 0,
+        owner_mismatch: 0,
+        suppressed_by_deletion: 0,
+      }
+
+      for (const item of items) {
+        summary[item.state] += 1
+      }
+
+      return summary
     },
   }
 }

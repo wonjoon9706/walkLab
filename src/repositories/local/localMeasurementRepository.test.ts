@@ -143,4 +143,62 @@ describe('LocalMeasurementRepository', () => {
     expect(recovered?.endedAt).toBeNull()
     expect(events.some((event) => event.eventType === 'measurement_interrupted')).toBe(true)
   })
+
+  it('동기화 상태를 바꿔도 확인된 GPS 원본을 삭제하지 않는다', async () => {
+    const { repository } = await createSession()
+    const point = createPoint()
+    await repository.savePoint('user-a', point)
+
+    await repository.setSyncItemsState(
+      [`gps_point:${point.id}`],
+      'confirmed',
+    )
+
+    expect(await repository.listPoints('user-a', 'session-1')).toEqual([point])
+    expect((await repository.getSyncSummary('user-a')).confirmed).toBe(1)
+  })
+
+  it('현재 사용자 항목만 재개하고 다른 사용자 항목은 owner mismatch로 격리한다', async () => {
+    const { repository } = await createSession('user-a')
+    await database?.syncItems.add({
+      key: 'session:foreign-session',
+      ownerUserId: 'user-b',
+      entityType: 'session',
+      entityId: 'foreign-session',
+      sessionId: 'foreign-session',
+      state: 'pending',
+      attemptCount: 0,
+      nextRetryAt: null,
+      lastErrorCode: null,
+      serverConfirmedAt: null,
+      createdAt: '2026-10-29T00:00:00.000Z',
+      updatedAt: '2026-10-29T00:00:00.000Z',
+    })
+    await repository.setSyncItemsState(
+      ['session:session-1'],
+      'auth_required',
+      '401',
+    )
+
+    await repository.prepareSyncItems('user-a')
+
+    expect((await repository.listPendingSyncItems('user-a')).length).toBe(2)
+    expect((await repository.getSyncSummary('user-b')).owner_mismatch).toBe(1)
+  })
+
+  it('삭제 cutoff 이전 session의 모든 전송 항목을 suppress한다', async () => {
+    const { repository } = await createSession('user-a')
+    await repository.savePoint('user-a', createPoint())
+
+    const count = await repository.suppressSessionsAtOrBefore(
+      'user-a',
+      '2026-10-29T00:00:00.000Z',
+    )
+
+    expect(count).toBe(1)
+    expect(
+      (await repository.getSyncSummary('user-a')).suppressed_by_deletion,
+    ).toBe(3)
+    expect(await repository.listPoints('user-a', 'session-1')).toHaveLength(1)
+  })
 })

@@ -17,6 +17,7 @@ import {
   MeasurementContext,
   type MeasurementContextValue,
 } from './measurementContext'
+import { useSync } from '../sync/syncContext'
 
 interface MeasurementProviderProps {
   children: ReactNode
@@ -30,7 +31,10 @@ function getSourcePlatform(): string {
   return isIos && isSafari ? 'web-ios-safari' : 'web-browser'
 }
 
-function createDefaultDependencies(): MeasurementManagerDependencies {
+function createDefaultDependencies(
+  notifyPointSaved: (ownerUserId: string) => Promise<void>,
+  notifyMeasurementStopped: () => void,
+): MeasurementManagerDependencies {
   return {
     repository: localMeasurementRepository,
     createCollector() {
@@ -45,6 +49,10 @@ function createDefaultDependencies(): MeasurementManagerDependencies {
     getSourcePlatform,
     now: () => new Date(),
     createId: () => crypto.randomUUID(),
+    onPointSaved: (ownerUserId) => {
+      void notifyPointSaved(ownerUserId)
+    },
+    onMeasurementStopped: notifyMeasurementStopped,
   }
 }
 
@@ -53,9 +61,14 @@ export function MeasurementProvider({
   dependencies,
 }: MeasurementProviderProps) {
   const { status: authStatus, user, confirmCurrentUser } = useAuth()
+  const { notifyPointSaved, notifyMeasurementStopped } = useSync()
   const [manager] = useState<MeasurementManager>(() =>
     createMeasurementManager(
-      dependencies ?? createDefaultDependencies(),
+      dependencies ??
+        createDefaultDependencies(
+          notifyPointSaved,
+          notifyMeasurementStopped,
+        ),
     ),
   )
   const [measurementState, setMeasurementState] = useState(

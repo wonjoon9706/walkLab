@@ -16,6 +16,7 @@ export function createFakeAuthService(
     requestEmailOtp: vi.fn().mockResolvedValue(undefined),
     verifyEmailOtp: vi.fn().mockResolvedValue(testUser),
     getCurrentUser: vi.fn().mockResolvedValue(null),
+    refreshCurrentUser: vi.fn().mockResolvedValue(null),
     subscribeToAuthChanges: vi.fn(() => () => undefined),
     signOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
