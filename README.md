@@ -1,6 +1,6 @@
 # WalkLab
 
-WalkLab 첫 MVP의 React + TypeScript 웹앱입니다. 현재 G0에서는 프로젝트 실행 기반과 화면 route만 준비하며 인증, GPS 수집, 동기화와 지도 기능은 아직 구현하지 않습니다.
+WalkLab 첫 MVP의 React + TypeScript 웹앱입니다. 현재 G1 이메일 OTP 인증과 보호 route까지 구현되어 있습니다. GPS 수집, 동기화와 지도 기능은 아직 구현하지 않습니다.
 
 ## 개발 환경
 
@@ -31,3 +31,5 @@ npm.cmd run build
 ```
 
 외부 서비스 설정 순서는 [G0 외부 서비스 체크리스트](docs/G0_EXTERNAL_SETUP.md)를 참고합니다.
+
+실제 이메일 OTP 검증은 [G1 수동 테스트 안내](docs/G1_MANUAL_TEST.md)를 참고합니다.
