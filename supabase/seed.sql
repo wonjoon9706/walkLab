@@ -1,0 +1,1 @@
+-- G3에는 기본 seed 데이터가 없다. 테스트 fixture는 pgTAP transaction 안에서 만든다.
