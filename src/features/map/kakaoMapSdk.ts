@@ -26,6 +26,32 @@ type KakaoMarkerImage = object
 type KakaoSize = object
 type KakaoPoint = object
 
+export interface KakaoPlaceDocument {
+  id: string
+  place_name: string
+  address_name: string
+  road_address_name: string
+  x: string
+  y: string
+}
+
+interface KakaoPlacesSearchOptions {
+  location?: KakaoLatLng
+  sort?: unknown
+  size?: number
+}
+
+interface KakaoPlacesService {
+  keywordSearch: (
+    query: string,
+    callback: (
+      results: KakaoPlaceDocument[],
+      status: string,
+    ) => void,
+    options?: KakaoPlacesSearchOptions,
+  ) => void
+}
+
 interface KakaoMapOverlay {
   setMap: (map: KakaoMapInstance | null) => void
 }
@@ -60,6 +86,15 @@ export interface KakaoMapsNamespace {
   Point: new (x: number, y: number) => KakaoPoint
   ZoomControl: new () => KakaoZoomControl
   ControlPosition: { RIGHT: unknown }
+  services: {
+    Places: new () => KakaoPlacesService
+    Status: {
+      OK: string
+      ZERO_RESULT: string
+      ERROR: string
+    }
+    SortBy: { DISTANCE: unknown }
+  }
 }
 
 declare global {
@@ -115,6 +150,7 @@ export function loadKakaoMapSdk(
     const url = new URL(KAKAO_MAP_SDK_URL)
     url.searchParams.set('appkey', javaScriptKey)
     url.searchParams.set('autoload', 'false')
+    url.searchParams.set('libraries', 'services')
 
     const script = document.createElement('script')
     script.id = KAKAO_MAP_SCRIPT_ID

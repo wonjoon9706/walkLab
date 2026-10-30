@@ -25,4 +25,10 @@ export default typescriptEslint.config(
       ],
     },
   },
+  {
+    files: ['api/**/*.ts'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 )

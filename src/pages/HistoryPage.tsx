@@ -160,6 +160,7 @@ export function HistoryPage() {
       )}
 
       <div className="button-row">
+        <Link className="link-button secondary-button" to="/walking-route">도보 길찾기</Link>
         <Link className="link-button secondary-button" to="/">측정 홈으로</Link>
       </div>
     </main>

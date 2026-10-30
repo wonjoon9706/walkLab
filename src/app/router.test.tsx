@@ -76,6 +76,7 @@ describe('인증 라우팅', () => {
   it.each([
     ['/', '측정 홈'],
     ['/history', '기록 목록'],
+    ['/walking-route', '도보 길찾기'],
     ['/sessions/test-session', '기록 상세'],
   ])('로그인 사용자는 %s 경로에서 %s 화면을 본다', async (path, heading) => {
     const service = createFakeAuthService({

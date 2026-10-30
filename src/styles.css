@@ -395,6 +395,64 @@ h1 {
   font-weight: 700;
 }
 
+.route-search-form {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.route-search-form label {
+  font-weight: 700;
+}
+
+.route-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+}
+
+.place-result-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.place-result-button {
+  display: grid;
+  width: 100%;
+  gap: 0.3rem;
+  border: 1px solid #c7d6cf;
+  color: #183129;
+  background: #ffffff;
+  text-align: left;
+}
+
+.place-result-button:hover,
+.place-result-button:focus-visible {
+  border-color: #27634f;
+  outline: 3px solid #c9e5da;
+}
+
+.place-result-button span,
+.place-result-button small {
+  color: #566b63;
+  font-weight: 400;
+}
+
+.selected-place-summary {
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  color: #24483c;
+  background: #e7f0ec;
+  line-height: 1.5;
+}
+
+.selected-place-summary span {
+  color: #566b63;
+}
+
 @media (max-width: 30rem) {
   .page-shell {
     padding: 2rem 0;
@@ -415,5 +473,13 @@ h1 {
 
   .route-map {
     min-height: 19rem;
+  }
+
+  .route-search-row {
+    grid-template-columns: 1fr;
+  }
+
+  .route-search-row button {
+    width: 100%;
   }
 }

@@ -1,7 +1,19 @@
 {
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/login",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/history",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/walking-route",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/sessions/:sessionId",
       "destination": "/index.html"
     }
   ]

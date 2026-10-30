@@ -27,6 +27,7 @@ describe('카카오맵 SDK 로더', () => {
     expect(document.querySelectorAll('#walklab-kakao-map-sdk')).toHaveLength(1)
     expect(script.src).toContain('autoload=false')
     expect(script.src).toContain('appkey=test-javascript-key')
+    expect(script.src).toContain('libraries=services')
 
     window.kakao = { maps }
     script.dispatchEvent(new Event('load'))

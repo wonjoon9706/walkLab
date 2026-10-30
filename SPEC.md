@@ -1,11 +1,13 @@
 # WalkLab Technical Specification
 
 - 문서 상태: 확정 초안
-- 문서 버전: 0.2
-- 수정일: 2026-10-29
+- 문서 버전: 0.3
+- 수정일: 2026-10-30
 - 기준 문서: `MVP.md`, `PRD.md`
 - 대상 범위: 첫 번째 WalkLab MVP P0
 - 개발 기간 기준: 1인 개발, 7일
+
+> 이 문서의 본문은 첫 P0 기술 명세를 보존한다. 이후 구현된 G6 이동·정지 분석, G7 개인 보행속도 모델과 G8 이후 Smart Arrival 설계는 아래의 “현재 구현 부록”과 별도 문서를 함께 참조한다.
 
 ## 1. 목적과 범위
 
@@ -39,6 +41,7 @@
 - `package-lock.json`으로 실제 설치 버전을 고정한다.
 - Redux, 별도 API 서버, 메시지 큐와 마이크로서비스는 사용하지 않는다.
 - 품질 알고리즘은 `quality-v1`, metrics는 `metrics-v1`, schema는 `1`로 시작한다.
+- 현재 지도 구현은 카카오맵 JavaScript SDK다. 과거 검토했던 MapLibre·MapTiler는 현재 코드와 환경변수에서 사용하지 않는다.
 
 ## 3. 전체 아키텍처
 
@@ -67,7 +70,7 @@ iPhone Safari / React SPA
 | `SyncCoordinator` | current user, pending 항목, online 신호 | 전송 순서와 sync 상태 전이 | React 렌더링, GPS API |
 | `RemoteRepository` | 플랫폼 중립 DTO | Supabase insert·update·confirm·cutoff 조회 | Dexie 구현 |
 | `QualityService` | 순서가 보장된 원본 | 버전이 있는 판정과 metrics | UI, DB 라이브러리 |
-| `MapAdapter` | GeoJSON | 점·선 layer와 point 선택 | 원본 수정, 동기화 |
+| `SessionRouteMap` | 위도·경도 경로 좌표 | 카카오맵 polyline·시작/종료 marker와 영역 조정 | 원본 수정, 동기화 |
 
 TypeScript 도메인 객체는 camelCase, 서버 열은 snake_case를 사용하며 remote repository에서 변환한다. PostgreSQL schema가 Python과 iOS의 공통 계약이다.
 
@@ -77,12 +80,12 @@ TypeScript 도메인 객체는 camelCase, 서버 열은 snake_case를 사용하�
 src/
   app/
     router.tsx
-    providers.tsx
     env.ts
   domain/
-    types.ts
-    errors.ts
-    constants.ts
+    measurement.ts
+    history.ts
+    movementAnalysis.ts
+    walkingSpeedModel.ts
   pages/
     LoginPage.tsx
     MeasurementPage.tsx
@@ -92,23 +95,27 @@ src/
     auth/
     measurement/
     sync/
-    history/
+    analysis/
+    learning/
     map/
   services/
+    analysis/movementAnalysis.ts
+    analysis/personalWalkingStats.ts
+    learning/walkingSpeedModel.ts
+    learning/walkingSpeedModelConfig.ts
     auth/authService.ts
     gps/gpsCollector.ts
     sync/syncCoordinator.ts
-    quality/qualityV1.ts
-    quality/metricsV1.ts
+    analysis/walkingAnalysis.ts
+    history/walkHistoryService.ts
   repositories/
-    local/walkLabDb.ts
-    local/localRepository.ts
+    local/walkLabDatabase.ts
+    local/localMeasurementRepository.ts
     remote/supabaseClient.ts
-    remote/remoteRepository.ts
+    remote/remoteSyncRepository.ts
+    remote/historyRepository.ts
   utils/
-    geo.ts
-    time.ts
-    uuid.ts
+    format.ts
 supabase/
   migrations/
   tests/
@@ -832,3 +839,19 @@ P0 요구사항 48개를 아래 범위로 모두 연결한다.
 - [Dexie API](https://dexie.org/docs/API-Reference)
 - [카카오 지도 Web API](https://apis.map.kakao.com/web/)
 - [Vite Static Deploy](https://vite.dev/guide/static-deploy.html)
+
+## 21. 현재 구현 부록과 후속 명세 (2026-10-30)
+
+### 21.1 P0 이후 구현된 분석
+
+- G6 `movement-v1`은 `quality-v1` 결과를 재사용해 이동·정지·판정 불가 시간과 이동 중 평균속도를 결정적으로 계산한다. GPS 원본과 `metrics-v1` 결과는 변경하지 않는다. 세부 기준은 `docs/G6_MOVEMENT_ANALYSIS.md`를 따른다.
+- G7 `recency-weighted-v1`은 세션별 이동 중 평균속도를 하나의 학습 단위로 사용한다. 최근 30일을 우선하고 데이터가 부족하면 90일까지 확대하며, 시간 감쇠와 세션별 최대 가중치를 적용한다. 결과는 기존 기록에서 다시 계산할 수 있으며 새 DB 테이블을 요구하지 않는다. 세부 기준은 `docs/G7_WALKING_SPEED_MODEL.md`를 따른다.
+- G1~G7은 구현과 실기기 검증을 완료했다. G7은 신규 보행 세션 동기화 후 추정속도와 가중치가 자동 갱신되는 종단 흐름까지 확인했다.
+
+### 21.2 G8 이후 기술 경계
+
+- G8~G17의 단계별 설계와 외부 API 검증 상태는 `docs/SMART_ARRIVAL_SPEC.md`에서 관리한다.
+- ETA 계산은 기본 도보시간, 신호 대기, 대중교통 구간, 경사도 보정, 날씨 보정을 독립된 구성요소로 분리한다.
+- 경사도와 날씨는 기본 도보시간을 만드는 보행속도에 한 번만 반영하고 별도 시간을 중복 가산하지 않는다.
+- 실시간 대중교통 값은 같은 항목의 시간표 기반 값을 대체하며 두 값을 더하지 않는다.
+- 외부 API 비밀 키 또는 여러 공급자 응답의 서버 측 조합이 필요할 때만 BFF·서버리스 함수·FastAPI 도입을 별도 결정한다. 현재 P0 프런트엔드에 비밀 키를 추가하지 않는다.

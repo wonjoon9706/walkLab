@@ -220,13 +220,23 @@ export function MeasurementPage() {
         <p>사용자 ID: {user?.id ?? '로그인 세션 만료'}</p>
         <div className="button-row">
           {measurement.isActive ? (
-            <span className="disabled-link" aria-disabled="true">
-              기록 목록
-            </span>
+            <>
+              <span className="disabled-link" aria-disabled="true">
+                도보 길찾기
+              </span>
+              <span className="disabled-link" aria-disabled="true">
+                기록 목록
+              </span>
+            </>
           ) : (
-            <Link className="link-button" to="/history">
-              기록 목록
-            </Link>
+            <>
+              <Link className="link-button" to="/walking-route">
+                도보 길찾기
+              </Link>
+              <Link className="link-button" to="/history">
+                기록 목록
+              </Link>
+            </>
           )}
           <button
             className="secondary-button"
