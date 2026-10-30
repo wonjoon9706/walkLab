@@ -6,6 +6,8 @@ import type {
   PersonalWalkingSummary,
 } from '../domain/movementAnalysis'
 import { useAuth } from '../features/auth/authContext'
+import { useSync } from '../features/sync/syncContext'
+import { WalkingSpeedModelCard } from '../features/learning/WalkingSpeedModelCard'
 import { walkHistoryService } from '../services/history/walkHistoryService'
 import { analyzePersonalWalkingHistory } from '../services/analysis/personalWalkingStats'
 import {
@@ -24,6 +26,7 @@ const exclusionReasonLabels: Record<AnalysisExclusionReason, string> = {
 
 export function HistoryPage() {
   const { user } = useAuth()
+  const { lastSyncedAt } = useSync()
   const [records, setRecords] = useState<WalkHistoryItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -79,7 +82,7 @@ export function HistoryPage() {
     return () => {
       isCurrent = false
     }
-  }, [user])
+  }, [lastSyncedAt, user])
 
   return (
     <main className="page-shell">
@@ -137,6 +140,10 @@ export function HistoryPage() {
               </>
             )}
           </section>
+
+          {personalSummary !== null && (
+            <WalkingSpeedModelCard summary={personalSummary} />
+          )}
 
           <ol className="history-list" aria-label="완료된 보행 기록">
           {records.map((record) => (
