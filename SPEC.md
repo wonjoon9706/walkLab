@@ -30,7 +30,7 @@
 | 로컬 DB | IndexedDB + Dexie | 타입, 트랜잭션, 인덱스와 schema version 관리 |
 | 서버 | Supabase PostgreSQL | 장기 보관, Python·iOS 공유와 Data API |
 | 인증 | Supabase Auth 이메일 OTP | 링크 클릭 없이 같은 화면에서 인증 |
-| 지도 | MapLibre GL JS + MapTiler | GeoJSON 점·선과 데이터 기반 색상 표현 |
+| 지도 | 카카오맵 JavaScript SDK | WGS84 경로·마커와 모바일 터치 지도 제공 |
 | 배포 | Vercel 정적 배포 | HTTPS와 Vite 배포가 단순함 |
 | 테스트 | Vitest + fake-indexeddb | 계산·로컬 DB 검증 |
 | DB 테스트 | Supabase CLI + pgTAP | grant·RLS·trigger 검증 |
@@ -53,7 +53,7 @@ iPhone Safari / React SPA
   │    ├─ Deletion Cutoff Guard
   │    └─ Supabase Data Repository ── PostgreSQL + RLS
   ├─ Quality / Metrics (pure TypeScript)
-  └─ Session Map (MapLibre GL JS)
+  └─ Session Map (카카오맵 JavaScript SDK)
 ```
 
 ### 3.1 모듈 계약
@@ -491,8 +491,7 @@ auth.users
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
-- `VITE_MAP_STYLE_URL`
-- 공개 지도 키
+- `VITE_KAKAO_MAP_JS_KEY`
 
 브라우저 금지:
 
@@ -611,21 +610,21 @@ auth.users
 
 ## 12. 지도
 
-- MapLibre GL JS를 React wrapper 없이 사용한다.
-- MapTiler style URL을 환경변수로 주입한다.
-- point는 DOM marker가 아닌 GeoJSON circle layer로 렌더링한다.
+- 카카오맵 공식 JavaScript SDK를 React wrapper 없이 사용한다.
+- `autoload=false`와 `kakao.maps.load()`로 SDK를 비동기 로딩한다.
+- JavaScript 키는 `VITE_KAKAO_MAP_JS_KEY` 환경변수로 주입한다.
 
-| source | layer | 표현 |
+| 데이터 | 지도 객체 | 표현 |
 |---|---|---|
-| raw points | circle | 정상 파랑, 낮은 정확도 주황, 튐·stale 빨강 |
-| raw route | line | 회색 반투명 점선 |
-| filtered route | line | 파랑 굵은 실선 |
-| selected point | circle | 큰 반지름·외곽선 |
+| raw points | marker | 정상 파랑, 낮은 정확도 주황, 튐·stale 빨강 |
+| raw route | polyline | 회색 반투명 점선 |
+| filtered route | polyline | 파랑 굵은 실선 |
+| selected point | marker | 큰 크기·외곽선 |
 
-- GeoJSON 좌표 순서는 `[longitude, latitude]`다.
+- WGS84 좌표를 `LatLng(latitude, longitude)` 순서로 전달한다.
 - point 선택 시 ID로 원본을 조회해 측정 시각과 정확도를 표시한다.
 - attribution을 항상 표시한다.
-- WebGL·style 실패 시 텍스트 요약은 계속 제공한다.
+- SDK 로딩 실패 시에도 텍스트 요약은 계속 제공한다.
 - 도로 매칭·오프라인 타일·애니메이션은 구현하지 않는다.
 
 ## 13. 이벤트와 오류
@@ -706,8 +705,7 @@ cutoff 방식은 client started_at에 의존한다. 기기 시계가 크게 잘�
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
-- `VITE_MAP_STYLE_URL`
-- 공개 MapTiler key
+- `VITE_KAKAO_MAP_JS_KEY`
 - `VITE_EMAIL_OTP_LENGTH=6`
 
 OTP 길이 환경변수는 UX용이며 실제 허용 여부는 Supabase가 결정한다.
@@ -718,7 +716,7 @@ OTP 길이 환경변수는 UX용이며 실제 허용 여부는 Supabase가 결�
 - SPA 경로를 `index.html`로 rewrite
 - HTTPS 고정 주소 사용
 - source map 비공개 기본
-- MapTiler key를 운영 domain으로 제한
+- 카카오 JavaScript SDK 도메인을 운영 domain으로 제한
 
 OTP는 링크 callback이 없으므로 auth redirect route는 필요하지 않다. Site URL은 production URL로 설정하되 로그인은 화면 내 OTP 검증으로 완료한다.
 
@@ -832,5 +830,5 @@ P0 요구사항 48개를 아래 범위로 모두 연결한다.
 - [W3C Geolocation](https://www.w3.org/TR/geolocation/)
 - [WebKit Storage Policy](https://webkit.org/blog/14403/updates-to-storage-policy/)
 - [Dexie API](https://dexie.org/docs/API-Reference)
-- [MapLibre GL JS](https://maplibre.org/maplibre-gl-js/docs/)
+- [카카오 지도 Web API](https://apis.map.kakao.com/web/)
 - [Vite Static Deploy](https://vite.dev/guide/static-deploy.html)

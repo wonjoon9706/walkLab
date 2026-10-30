@@ -37,6 +37,7 @@ function createFakeRepository(
     listSessions: vi.fn().mockResolvedValue([]),
     listPoints: vi.fn().mockResolvedValue([]),
     listEvents: vi.fn().mockResolvedValue([]),
+    saveAnalysis: vi.fn().mockResolvedValue(undefined),
     prepareSyncItems: vi.fn().mockResolvedValue(undefined),
     listPendingSyncItems: vi.fn().mockResolvedValue([]),
     listSyncItems: vi.fn().mockResolvedValue([]),

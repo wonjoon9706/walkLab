@@ -236,6 +236,92 @@ h1 {
   font-weight: 700;
 }
 
+.history-list {
+  display: grid;
+  gap: 0.85rem;
+  margin: 2rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-card {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid #c7d6cf;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  color: #183129;
+  background: #ffffff;
+  text-decoration: none;
+}
+
+.history-card:focus-visible,
+.history-card:hover {
+  border-color: #27634f;
+  outline: 3px solid #c9e5da;
+}
+
+.history-card span,
+.analysis-version,
+.session-identifier {
+  color: #566b63;
+  font-size: 0.9rem;
+}
+
+.empty-history {
+  margin-top: 2rem;
+}
+
+.detail-metrics {
+  margin-top: 1rem;
+}
+
+.detail-metrics dd {
+  overflow-wrap: anywhere;
+}
+
+.map-card {
+  overflow: hidden;
+}
+
+.route-map {
+  width: 100%;
+  min-height: 24rem;
+  border-radius: 0.65rem;
+  overflow: hidden;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0;
+  color: #566b63;
+  font-size: 0.8rem;
+}
+
+.map-legend span::before {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.3rem;
+  border-radius: 50%;
+  background: #87958f;
+  content: '';
+}
+
+.map-legend .filtered-route-key::before {
+  background: #176b87;
+}
+
+.map-legend .start-point-key::before {
+  background: #2a8c58;
+}
+
+.map-legend .end-point-key::before {
+  background: #c54242;
+}
+
 @media (max-width: 30rem) {
   .page-shell {
     padding: 2rem 0;
@@ -252,5 +338,9 @@ h1 {
 
   .measurement-grid {
     grid-template-columns: 1fr;
+  }
+
+  .route-map {
+    min-height: 19rem;
   }
 }

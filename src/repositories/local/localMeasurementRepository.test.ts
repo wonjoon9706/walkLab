@@ -201,4 +201,54 @@ describe('LocalMeasurementRepository', () => {
     ).toBe(3)
     expect(await repository.listPoints('user-a', 'session-1')).toHaveLength(1)
   })
+
+  it('품질 판정과 metrics를 GPS 원본과 분리해 저장한다', async () => {
+    const { repository } = await createSession('user-a')
+    const point = createPoint()
+    await repository.savePoint('user-a', point)
+
+    await repository.saveAnalysis(
+      'user-a',
+      [
+        {
+          pointId: point.id,
+          sessionId: point.sessionId,
+          algorithmVersion: 'quality-v1',
+          status: 'included',
+          reasons: [],
+          includedInFilteredPath: true,
+          evaluatedAt: '2026-10-29T00:10:00.000Z',
+        },
+        {
+          pointId: 'server-only-point',
+          sessionId: point.sessionId,
+          algorithmVersion: 'quality-v1',
+          status: 'included',
+          reasons: [],
+          includedInFilteredPath: true,
+          evaluatedAt: '2026-10-29T00:10:00.000Z',
+        },
+      ],
+      {
+        sessionId: point.sessionId,
+        algorithmVersion: 'metrics-v1',
+        qualityAlgorithmVersion: 'quality-v1',
+        durationSeconds: 60,
+        rawDistanceM: 80,
+        filteredDistanceM: 75,
+        averageSpeedMps: 1.25,
+        paceSecondsPerKm: 800,
+        altitudeMinM: null,
+        altitudeMaxM: null,
+        altitudeSampleCount: 0,
+        rawPointCount: 1,
+        filteredPointCount: 1,
+        calculatedAt: '2026-10-29T00:10:00.000Z',
+      },
+    )
+
+    expect(await database?.pointQuality.count()).toBe(1)
+    expect(await database?.sessionMetrics.count()).toBe(1)
+    expect(await repository.listPoints('user-a', 'session-1')).toEqual([point])
+  })
 })

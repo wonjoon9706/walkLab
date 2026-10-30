@@ -8,6 +8,10 @@ import type {
   SyncEntityType,
   SyncItem,
 } from '../../domain/measurement'
+import type {
+  PointQualityResult,
+  WalkMetricsResult,
+} from '../../domain/history'
 import {
   walkLabDatabase,
   type WalkLabDatabase,
@@ -64,6 +68,11 @@ export interface LocalMeasurementRepository {
     ownerUserId: string,
     sessionId: string,
   ) => Promise<MeasurementEvent[]>
+  saveAnalysis: (
+    ownerUserId: string,
+    quality: PointQualityResult[],
+    metrics: WalkMetricsResult,
+  ) => Promise<void>
   prepareSyncItems: (ownerUserId: string) => Promise<void>
   listPendingSyncItems: (ownerUserId: string) => Promise<SyncItem[]>
   listSyncItems: (ownerUserId: string) => Promise<SyncItem[]>
@@ -407,6 +416,59 @@ export function createLocalMeasurementRepository(
         .where('sessionId')
         .equals(sessionId)
         .sortBy('occurredAt')
+    },
+
+    async saveAnalysis(ownerUserId, quality, metrics) {
+      await database.transaction(
+        'rw',
+        database.sessions,
+        database.gpsPoints,
+        database.pointQuality,
+        database.sessionMetrics,
+        async () => {
+          await requireOwnedSession(database, ownerUserId, metrics.sessionId)
+
+          const pointIds = quality.map((result) => result.pointId)
+          const points = await database.gpsPoints.bulkGet(pointIds)
+          const allResultsBelongToSession = quality.every(
+            (result) => result.sessionId === metrics.sessionId,
+          )
+          const existingPointIds = new Set<string>()
+
+          for (const point of points) {
+            if (point === undefined) {
+              continue
+            }
+            if (point.sessionId !== metrics.sessionId) {
+              throw new Error('LOCAL_ANALYSIS_POINT_MISMATCH')
+            }
+            existingPointIds.add(point.id)
+          }
+
+          if (!allResultsBelongToSession) {
+            throw new Error('LOCAL_ANALYSIS_POINT_MISMATCH')
+          }
+
+          await database.pointQuality.bulkPut(
+            quality
+              .filter((result) => existingPointIds.has(result.pointId))
+              .map((result) => ({
+                key: `${result.pointId}:${result.algorithmVersion}`,
+                sessionId: result.sessionId,
+                pointId: result.pointId,
+                algorithmVersion: result.algorithmVersion,
+                status: result.status,
+                reasons: result.reasons,
+                includedInFilteredPath: result.includedInFilteredPath,
+                evaluatedAt: result.evaluatedAt,
+              })),
+          )
+          await database.sessionMetrics.put({
+            key: `${metrics.sessionId}:${metrics.algorithmVersion}`,
+            ...metrics,
+          })
+        },
+      )
     },
 
     async prepareSyncItems(ownerUserId) {

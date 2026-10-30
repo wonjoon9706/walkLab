@@ -76,7 +76,7 @@ FastAPI는 현재 GPS 수집 MVP에 추가하지 않는다. 향후 Python 기반
 
 - 로컬·preview·production 환경을 분리한다.
 - `.env.example`에는 변수 이름만 기록한다.
-- 브라우저 변수는 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_MAP_STYLE_URL`, 공개 MapTiler key와 `VITE_EMAIL_OTP_LENGTH`로 제한한다.
+- 브라우저 변수는 `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_KAKAO_MAP_JS_KEY`와 `VITE_EMAIL_OTP_LENGTH`로 제한한다.
 - Supabase SDK가 세션 복원을 위해 관리하는 access·refresh token 저장은 허용하되, 애플리케이션 소유 storage key나 IndexedDB store에 토큰을 복제하지 않는다.
 - 관리자 삭제 작업은 Supabase Dashboard 또는 신뢰할 수 있는 관리자 SQL 환경에서만 수행한다.
 
@@ -105,7 +105,7 @@ FastAPI는 현재 GPS 수집 MVP에 추가하지 않는다. 향후 Python 기반
 
 - Git 초기화·기준 문서 commit·비밀정보 제외 규칙 설정
 - Node.js 22.12 이상 확인 및 버전 고정 파일 결정
-- React + Vite + TypeScript 프로젝트, React Router, Dexie, Supabase JS, MapLibre 설치 계획 반영
+- React + Vite + TypeScript 프로젝트, React Router, Dexie와 Supabase JS 설치 계획 반영
 - Vitest, fake-indexeddb, ESLint와 type check 구성
 - `SPEC.md`의 폴더 구조와 네 개 route shell 준비 계획
 - Supabase 프로젝트 생성 및 URL·Publishable Key 확보 계획
@@ -114,7 +114,7 @@ FastAPI는 현재 GPS 수집 MVP에 추가하지 않는다. 향후 Python 기반
 - `Magic Link or OTP` 템플릿에서 `{{ .Token }}` 사용 및 `{{ .ConfirmationURL }}` 제거 계획
 - OTP 6자리, 만료 3,600초, 재요청·발송 제한의 실제 project 값 확인 계획
 - 초기 본인 테스트 이메일이 기본 발송 정책에서 허용되는지 확인
-- MapTiler 계정·style URL·공개 key와 production domain 제한 계획
+- 카카오디벨로퍼스 앱·JavaScript 키와 production SDK 도메인 등록 계획
 - Vercel project, build output `dist`, SPA rewrite와 환경변수 등록 계획
 
 이번 `PLAN.md` 작성 작업에서는 실제 프로젝트 생성, package 설치, Dashboard 설정 또는 배포를 수행하지 않았다. 위 항목은 G0 구현 착수 시 실행할 체크리스트다.
@@ -137,7 +137,7 @@ FastAPI는 현재 GPS 수집 MVP에 추가하지 않는다. 향후 Python 기반
 - [ ] 실제 Supabase OTP 자릿수·만료·발송 제한을 기록했다.
 - [ ] 이메일 템플릿이 링크가 아닌 OTP 발송 형태인지 확인했다.
 - [ ] 브라우저 허용 key와 금지 key 목록을 확인했다.
-- [ ] MapTiler와 Vercel 설정값을 안전하게 주입할 경로가 정해졌다.
+- [ ] 카카오맵과 Vercel 설정값을 안전하게 주입할 경로가 정해졌다.
 
 ### 실패 시 대응
 
@@ -514,14 +514,14 @@ FastAPI는 현재 GPS 수집 MVP에 추가하지 않는다. 향후 Python 기반
 
 ### 작업 목록
 
-#### T6.1 MapLibre 지도
+#### T6.1 카카오맵 지도
 
-- MapTiler style과 attribution 적용
-- raw points GeoJSON circle layer
-- sequence 순 raw LineString과 quality 포함 filtered LineString
+- 카카오맵 SDK와 저작권 표시 유지
+- raw points marker 표시
+- sequence 순 raw polyline과 quality 포함 filtered polyline
 - 정상·낮은 정확도·튐·stale 스타일과 범례
 - point 선택 시 measured_at과 accuracy 표시
-- WebGL·style 실패 시 텍스트 상세 유지
+- SDK 로딩 실패 시 텍스트 상세 유지
 
 완료 조건: 저장된 raw point 수와 지도 source point 수가 일치하고 두 경로가 명확히 구분된다.
 
@@ -594,7 +594,7 @@ P0 48개 전체와 MVP 성공 기준 12개
 - Vercel production 환경변수 등록
 - Vite `dist`, SPA rewrite, HTTPS와 source map 정책 확인
 - Supabase Site URL·허용 URL을 production 주소로 확인
-- MapTiler production domain 제한과 attribution 확인
+- 카카오 JavaScript SDK production domain과 저작권 표시 확인
 - production bundle secret scan
 
 #### T7.2 자동 회귀

@@ -45,8 +45,7 @@ $environmentKeys = Read-EnvironmentKeys -Path $environmentPath
 $requiredEnvironmentKeys = @(
     'VITE_SUPABASE_URL',
     'VITE_SUPABASE_PUBLISHABLE_KEY',
-    'VITE_MAP_STYLE_URL',
-    'VITE_MAPTILER_API_KEY',
+    'VITE_KAKAO_MAP_JS_KEY',
     'VITE_EMAIL_OTP_LENGTH'
 )
 

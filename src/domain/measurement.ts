@@ -88,6 +88,16 @@ export interface SessionMetrics {
   sessionId: string
   algorithmVersion: string
   qualityAlgorithmVersion: string
+  durationSeconds: number | null
+  rawDistanceM: number
+  filteredDistanceM: number
+  averageSpeedMps: number | null
+  paceSecondsPerKm: number | null
+  altitudeMinM: number | null
+  altitudeMaxM: number | null
+  altitudeSampleCount: number
+  rawPointCount: number
+  filteredPointCount: number
   calculatedAt: string
 }
 

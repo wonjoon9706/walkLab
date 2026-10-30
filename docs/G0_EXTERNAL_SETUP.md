@@ -18,13 +18,11 @@
 
 브라우저에는 Publishable Key만 사용합니다. Secret Key, Service Role Key와 관리자 DB 접속 정보는 요청하거나 저장하지 않습니다.
 
-## MapTiler
+## 카카오맵
 
-- [ ] MapTiler 계정을 준비한다.
-- [ ] 사용할 지도 스타일을 선택한다.
-- [ ] 공개 style URL을 `VITE_MAP_STYLE_URL`에 등록한다.
-- [ ] 공개 API key를 `VITE_MAPTILER_API_KEY`에 등록한다.
-- [ ] production 배포 전 API key의 허용 도메인을 Vercel production domain으로 제한한다.
+- [ ] 카카오디벨로퍼스 앱을 준비하고 카카오맵 API를 활성화한다.
+- [ ] JavaScript 키를 `VITE_KAKAO_MAP_JS_KEY`에 등록한다.
+- [ ] 로컬 및 Vercel production 주소를 JavaScript SDK 도메인에 등록한다.
 - [ ] 지도 attribution 표시 조건을 확인한다.
 
 G0에서는 환경변수 주입 경로만 준비합니다. 실제 지도 렌더링은 G6에서 구현합니다.

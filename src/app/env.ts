@@ -1,8 +1,7 @@
 export interface PublicEnvironment {
   supabaseUrl: string | null
   supabasePublishableKey: string | null
-  mapStyleUrl: string | null
-  mapTilerApiKey: string | null
+  kakaoMapJavaScriptKey: string | null
   emailOtpLength: number
 }
 
@@ -38,8 +37,7 @@ export function readPublicEnvironment(
     supabasePublishableKey: readOptionalText(
       source.VITE_SUPABASE_PUBLISHABLE_KEY,
     ),
-    mapStyleUrl: readOptionalText(source.VITE_MAP_STYLE_URL),
-    mapTilerApiKey: readOptionalText(source.VITE_MAPTILER_API_KEY),
+    kakaoMapJavaScriptKey: readOptionalText(source.VITE_KAKAO_MAP_JS_KEY),
     emailOtpLength: readOtpLength(source.VITE_EMAIL_OTP_LENGTH),
   }
 }
@@ -57,12 +55,8 @@ export function findMissingEnvironmentVariables(
     missingVariables.push('VITE_SUPABASE_PUBLISHABLE_KEY')
   }
 
-  if (environment.mapStyleUrl === null) {
-    missingVariables.push('VITE_MAP_STYLE_URL')
-  }
-
-  if (environment.mapTilerApiKey === null) {
-    missingVariables.push('VITE_MAPTILER_API_KEY')
+  if (environment.kakaoMapJavaScriptKey === null) {
+    missingVariables.push('VITE_KAKAO_MAP_JS_KEY')
   }
 
   return missingVariables
