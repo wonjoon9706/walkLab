@@ -1,5 +1,8 @@
-import type { GeoCoordinate, WalkingRoute } from '../../domain/walkingRoute'
-import { WalkingRouteError } from '../../domain/walkingRoute'
+import type {
+  GeoCoordinate,
+  WalkingRoute,
+} from '../../domain/walkingRoute.js'
+import { WalkingRouteError } from '../../domain/walkingRoute.js'
 
 interface KakaoWalkingRouteResponse {
   status?: unknown

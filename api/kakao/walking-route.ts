@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { loadEnvFile } from 'node:process'
 import { createClient } from '@supabase/supabase-js'
-import { WalkingRouteError } from '../../src/domain/walkingRoute'
-import { parseKakaoWalkingRouteResponse } from '../../src/services/routing/kakaoWalkingRouteParser'
+import { WalkingRouteError } from '../../src/domain/walkingRoute.js'
+import { parseKakaoWalkingRouteResponse } from '../../src/services/routing/kakaoWalkingRouteParser.js'
 
 const KAKAO_WALKING_ROUTE_URL = 'https://dapi.kakao.com/v2/routing/walk'
 const REQUEST_TIMEOUT_MS = 10_000
