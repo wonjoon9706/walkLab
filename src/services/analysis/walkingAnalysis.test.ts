@@ -44,6 +44,40 @@ function makePoint(
 }
 
 describe('보행 분석', () => {
+  it('285개 GPS 회귀 fixture의 기존 metrics-v1 값을 유지한다', () => {
+    const durationSeconds = 285
+    const targetDistanceM = 488
+    const pointCount = 285
+    const latitudeStep =
+      (targetDistanceM / (pointCount - 1) / 6_371_008.8) * (180 / Math.PI)
+    const excludedIndexes = new Set([20, 40, 60, 80, 100, 120, 140])
+    const regressionSession: LocalWalkSession = {
+      ...session,
+      endedAt: new Date(
+        Date.parse(session.startedAt) + durationSeconds * 1000,
+      ).toISOString(),
+    }
+    const points = Array.from({ length: pointCount }, (_, index) =>
+      makePoint(
+        index + 1,
+        index * latitudeStep,
+        new Date(Date.parse(session.startedAt) + index * 1000).toISOString(),
+        {
+          longitude: 0,
+          accuracyM: excludedIndexes.has(index) ? 60 : 5,
+        },
+      ),
+    )
+
+    const analysis = analyzeWalkSession(regressionSession, points)
+
+    expect(analysis.metrics.durationSeconds).toBe(285)
+    expect(analysis.metrics.rawPointCount).toBe(285)
+    expect(analysis.metrics.filteredPointCount).toBe(278)
+    expect(analysis.metrics.filteredDistanceM).toBeCloseTo(488, 0)
+    expect((analysis.metrics.averageSpeedMps ?? 0) * 3.6).toBeCloseTo(6.16, 2)
+  })
+
   it('Haversine 공식으로 좌표 사이 거리를 계산한다', () => {
     const first = makePoint(1, 0, '2026-10-30T00:00:00.000Z', { longitude: 0 })
     const second = makePoint(2, 0, '2026-10-30T00:00:10.000Z', { longitude: 0.001 })

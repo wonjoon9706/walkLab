@@ -322,6 +322,79 @@ h1 {
   background: #c54242;
 }
 
+.speed-chart-container {
+  margin-top: 1.25rem;
+}
+
+.speed-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #c7d6cf;
+  border-radius: 0.65rem;
+  background: #ffffff;
+}
+
+.chart-axis {
+  stroke: #73847d;
+  stroke-width: 1;
+}
+
+.speed-line {
+  fill: none;
+  stroke: #176b87;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+}
+
+.chart-label {
+  fill: #566b63;
+  font-size: 13px;
+}
+
+.map-legend .moving-segment-key::before {
+  background: #71ad8c;
+}
+
+.map-legend .stationary-segment-key::before {
+  background: #d6a64d;
+}
+
+.map-legend .uncertain-segment-key::before {
+  background: #a7aeaa;
+}
+
+.comparison-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comparison-list li {
+  display: grid;
+  gap: 0.35rem;
+  border-top: 1px solid #dce4e0;
+  padding-top: 0.75rem;
+}
+
+.comparison-list span {
+  color: #566b63;
+  font-size: 0.875rem;
+}
+
+.comparison-list .eligible-label {
+  color: #27634f;
+  font-weight: 700;
+}
+
+.comparison-list .excluded-label {
+  color: #8a5a19;
+  font-weight: 700;
+}
+
 @media (max-width: 30rem) {
   .page-shell {
     padding: 2rem 0;

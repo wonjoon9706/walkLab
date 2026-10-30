@@ -1,8 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import type { WalkAnalysis, WalkSessionDetail } from '../domain/history'
+import type { MovementAnalysis } from '../domain/movementAnalysis'
 import { useAuth } from '../features/auth/authContext'
+import { SpeedTimelineChart } from '../features/analysis/SpeedTimelineChart'
 import { walkHistoryService } from '../services/history/walkHistoryService'
+import { analyzeMovement } from '../services/analysis/movementAnalysis'
 import {
   formatDistance,
   formatDuration,
@@ -15,6 +18,7 @@ import { reportDevelopmentError } from '../utils/developmentError'
 interface LoadedSession {
   detail: WalkSessionDetail
   analysis: WalkAnalysis
+  movement: MovementAnalysis
   savedLocally: boolean
   savedOnServer: boolean
 }
@@ -54,7 +58,12 @@ export function SessionDetailPage() {
         }
 
         const result = await walkHistoryService.analyzeAndSave(user.id, detail)
-        if (isCurrent) setLoadedSession({ detail, ...result })
+        const movement = analyzeMovement(
+          detail.session,
+          detail.points,
+          result.analysis,
+        )
+        if (isCurrent) setLoadedSession({ detail, movement, ...result })
       } catch (error) {
         reportDevelopmentError('session detail load failed', error)
         if (isCurrent) {
@@ -137,6 +146,25 @@ export function SessionDetailPage() {
                 분석 결과를 서버에 저장하지 못했지만 이 화면의 계산 결과는 확인할 수 있습니다.
               </p>
             )}
+          </section>
+
+          <section className="status-card" aria-labelledby="movement-title">
+            <h2 id="movement-title">이동·정지 구간 분석</h2>
+            <p className="page-description">
+              품질 기준을 통과한 GPS 구간의 속도를 주변 5개 구간 중앙값으로
+              완화해 분류합니다. 10초를 넘는 수신 공백은 정지로 단정하지 않고
+              판정 불가 시간에 포함합니다.
+            </p>
+            <dl className="measurement-grid detail-metrics">
+              <div><dt>이동 시간</dt><dd>{formatDuration(loadedSession.movement.movingDurationSeconds)}</dd></div>
+              <div><dt>정지 시간</dt><dd>{formatDuration(loadedSession.movement.stationaryDurationSeconds)}</dd></div>
+              <div><dt>판정 불가</dt><dd>{formatDuration(loadedSession.movement.uncertainDurationSeconds)}</dd></div>
+              <div><dt>이동 중 평균속도</dt><dd>{formatSpeed(loadedSession.movement.movingAverageSpeedMps)}</dd></div>
+            </dl>
+            <SpeedTimelineChart movement={loadedSession.movement} />
+            <p className="analysis-version">
+              구간 기준: {loadedSession.movement.algorithmVersion} · 정지 ≤ 0.35 m/s · 이동 ≥ 0.7 m/s
+            </p>
           </section>
 
           <section className="status-card map-card" aria-labelledby="map-title">
