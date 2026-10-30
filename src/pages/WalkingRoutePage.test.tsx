@@ -7,10 +7,16 @@ const {
   getCurrentLocationMock,
   getWalkingRouteMock,
   loadSpeedModelMock,
+  navigationStartMock,
+  navigationStopMock,
+  measurementState,
 } = vi.hoisted(() => ({
   getCurrentLocationMock: vi.fn(),
   getWalkingRouteMock: vi.fn(),
   loadSpeedModelMock: vi.fn(),
+  navigationStartMock: vi.fn(),
+  navigationStopMock: vi.fn(),
+  measurementState: { isActive: false },
 }))
 
 const manualOrigin: PlaceSearchResult = {
@@ -39,6 +45,32 @@ const destination: PlaceSearchResult = {
 
 vi.mock('../features/auth/authContext', () => ({
   useAuth: () => ({ user: { id: 'user-1', email: 'user@example.com' } }),
+}))
+
+vi.mock('../features/measurement/measurementContext', () => ({
+  useMeasurement: () => measurementState,
+}))
+
+vi.mock('../features/navigation/useLiveNavigation', () => ({
+  useLiveNavigation: () => ({
+    status: 'idle',
+    isActive: false,
+    route: null,
+    currentPosition: null,
+    remainingCoordinates: [],
+    remainingDistanceM: null,
+    progressRatio: null,
+    recentSpeedMps: null,
+    appliedSpeedMps: null,
+    speedSource: null,
+    remainingDurationSeconds: null,
+    arrivalAt: null,
+    lastPositionAt: null,
+    rerouteCount: 0,
+    message: null,
+    start: navigationStartMock,
+    stop: navigationStopMock,
+  }),
 }))
 
 vi.mock('../services/location/currentLocation', () => ({
@@ -92,6 +124,9 @@ vi.mock('../features/places/PlaceSearchPanel', () => ({
 }))
 
 beforeEach(() => {
+  navigationStartMock.mockReset()
+  navigationStopMock.mockReset()
+  measurementState.isActive = false
   getCurrentLocationMock.mockRejectedValue(new Error('permission denied'))
   loadSpeedModelMock.mockResolvedValue({
     algorithmVersion: 'recency-weighted-v1',
@@ -174,6 +209,43 @@ describe('WalkingRoutePage 출발지 선택', () => {
         destination: destination.coordinate,
       })
     })
+  })
+
+  it('조회한 경로와 실제 출발지 조건으로 안내를 시작한다', async () => {
+    render(
+      <MemoryRouter>
+        <WalkingRoutePage />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+    await screen.findByRole('button', { name: '안내 시작' })
+
+    fireEvent.click(screen.getByRole('button', { name: '안내 시작' }))
+
+    expect(navigationStartMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination: destination.coordinate,
+        forceInitialReroute: true,
+      }),
+    )
+  })
+
+  it('기존 GPS 측정 중에는 실시간 안내를 함께 시작하지 않는다', async () => {
+    measurementState.isActive = true
+    render(
+      <MemoryRouter>
+        <WalkingRoutePage />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+    fireEvent.click(await screen.findByRole('button', { name: '안내 시작' }))
+
+    expect(navigationStartMock).not.toHaveBeenCalled()
+    expect(
+      screen.getByText(/GPS 측정 중에는 길찾기 안내를 함께 시작할 수 없습니다/),
+    ).toBeInTheDocument()
   })
 })
 

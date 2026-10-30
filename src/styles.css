@@ -322,6 +322,10 @@ h1 {
   background: #c54242;
 }
 
+.map-legend .current-position-key::before {
+  background: #2563eb;
+}
+
 .speed-chart-container {
   margin-top: 1.25rem;
 }

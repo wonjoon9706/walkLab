@@ -114,4 +114,28 @@ describe('WalkingRouteMap', () => {
       await screen.findByText(/카카오맵을 불러오지 못했습니다/),
     ).toBeInTheDocument()
   })
+
+  it('안내 중 현재 위치와 남은 경로를 추가로 표시한다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+    const coordinates = [
+      { latitude: 37.5, longitude: 127.1 },
+      { latitude: 37.51, longitude: 127.11 },
+      { latitude: 37.52, longitude: 127.12 },
+    ]
+
+    render(
+      <WalkingRouteMap
+        coordinates={coordinates}
+        start={coordinates[0]}
+        destination={coordinates[2]}
+        currentPosition={{ latitude: 37.505, longitude: 127.105 }}
+        remainingCoordinates={[coordinates[1], coordinates[2]]}
+      />,
+    )
+
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(3))
+    expect(fake.polylineOptions).toHaveLength(2)
+    expect(screen.getByText('현재 위치')).toBeInTheDocument()
+  })
 })

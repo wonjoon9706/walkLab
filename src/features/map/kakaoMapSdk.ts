@@ -6,7 +6,7 @@ export interface KakaoLatLng {
   getLng: () => number
 }
 
-interface KakaoMapInstance {
+export interface KakaoMapInstance {
   setBounds: (
     bounds: KakaoLatLngBounds,
     paddingTop?: number,
@@ -52,8 +52,16 @@ interface KakaoPlacesService {
   ) => void
 }
 
-interface KakaoMapOverlay {
+export interface KakaoMapOverlay {
   setMap: (map: KakaoMapInstance | null) => void
+}
+
+export interface KakaoPolyline extends KakaoMapOverlay {
+  setPath: (path: KakaoLatLng[]) => void
+}
+
+export interface KakaoMarker extends KakaoMapOverlay {
+  setPosition: (position: KakaoLatLng) => void
 }
 
 export interface KakaoMapsNamespace {
@@ -71,12 +79,12 @@ export interface KakaoMapsNamespace {
     strokeColor: string
     strokeOpacity: number
     strokeStyle?: string
-  }) => KakaoMapOverlay
+  }) => KakaoPolyline
   Marker: new (options: {
     map: KakaoMapInstance
     position: KakaoLatLng
     image: KakaoMarkerImage
-  }) => KakaoMapOverlay
+  }) => KakaoMarker
   MarkerImage: new (
     source: string,
     size: KakaoSize,

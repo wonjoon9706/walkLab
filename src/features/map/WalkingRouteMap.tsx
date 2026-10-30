@@ -4,6 +4,8 @@ import type { GeoCoordinate } from '../../domain/walkingRoute'
 import {
   loadKakaoMapSdk,
   type KakaoLatLng,
+  type KakaoMapInstance,
+  type KakaoMapOverlay,
   type KakaoMapsNamespace,
 } from './kakaoMapSdk'
 
@@ -11,10 +13,13 @@ interface WalkingRouteMapProps {
   coordinates: GeoCoordinate[]
   start: GeoCoordinate
   destination: GeoCoordinate
+  currentPosition?: GeoCoordinate | null
+  remainingCoordinates?: GeoCoordinate[]
 }
 
-interface RemovableOverlay {
-  setMap: (map: null) => void
+interface MapRuntime {
+  map: KakaoMapInstance
+  maps: KakaoMapsNamespace
 }
 
 function toKakaoPosition(
@@ -41,11 +46,20 @@ export function WalkingRouteMap({
   coordinates,
   start,
   destination,
+  currentPosition = null,
+  remainingCoordinates,
 }: WalkingRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const runtimeRef = useRef<MapRuntime | null>(null)
   const [mapError, setMapError] = useState<string | null>(null)
+  const [mapReadyVersion, setMapReadyVersion] = useState(0)
   const javaScriptKey = publicEnvironment.kakaoMapJavaScriptKey
   const stableCoordinates = useMemo(() => coordinates, [coordinates])
+  const stableRemainingCoordinates = useMemo(
+    () => remainingCoordinates,
+    [remainingCoordinates],
+  )
+  const isLiveMode = remainingCoordinates !== undefined
 
   useEffect(() => {
     const container = containerRef.current
@@ -58,7 +72,7 @@ export function WalkingRouteMap({
     }
 
     let isDisposed = false
-    const overlays: RemovableOverlay[] = []
+    const overlays: KakaoMapOverlay[] = []
     setMapError(null)
 
     void loadKakaoMapSdk(javaScriptKey)
@@ -81,19 +95,21 @@ export function WalkingRouteMap({
             map,
             path,
             strokeWeight: 6,
-            strokeColor: '#176b87',
-            strokeOpacity: 0.95,
-          }) as RemovableOverlay,
+            strokeColor:
+              isLiveMode ? '#9aa7ad' : '#176b87',
+            strokeOpacity:
+              isLiveMode ? 0.55 : 0.95,
+          }),
           new maps.Marker({
             map,
             position: startPosition,
             image: createMarkerImage(maps, '#2a8c58', '도보 경로 출발지'),
-          }) as RemovableOverlay,
+          }),
           new maps.Marker({
             map,
             position: destinationPosition,
             image: createMarkerImage(maps, '#c54242', '도보 경로 목적지'),
-          }) as RemovableOverlay,
+          }),
         )
 
         const bounds = new maps.LatLngBounds()
@@ -101,6 +117,8 @@ export function WalkingRouteMap({
         bounds.extend(startPosition)
         bounds.extend(destinationPosition)
         map.setBounds(bounds, 40, 40, 40, 40)
+        runtimeRef.current = { map, maps }
+        setMapReadyVersion((version) => version + 1)
       })
       .catch(() => {
         if (!isDisposed) {
@@ -112,10 +130,60 @@ export function WalkingRouteMap({
 
     return () => {
       isDisposed = true
+      runtimeRef.current = null
       overlays.forEach((overlay) => overlay.setMap(null))
       container.replaceChildren()
     }
-  }, [destination, javaScriptKey, stableCoordinates, start])
+  }, [
+    destination,
+    isLiveMode,
+    javaScriptKey,
+    stableCoordinates,
+    start,
+  ])
+
+  useEffect(() => {
+    const runtime = runtimeRef.current
+    if (runtime === null || !isLiveMode) return
+
+    const liveOverlays: KakaoMapOverlay[] = []
+    if (
+      stableRemainingCoordinates !== undefined &&
+      stableRemainingCoordinates.length >= 2
+    ) {
+      liveOverlays.push(
+        new runtime.maps.Polyline({
+          map: runtime.map,
+          path: stableRemainingCoordinates.map((coordinate) =>
+            toKakaoPosition(runtime.maps, coordinate),
+          ),
+          strokeWeight: 7,
+          strokeColor: '#176b87',
+          strokeOpacity: 0.95,
+        }),
+      )
+    }
+    if (currentPosition !== null) {
+      liveOverlays.push(
+        new runtime.maps.Marker({
+          map: runtime.map,
+          position: toKakaoPosition(runtime.maps, currentPosition),
+          image: createMarkerImage(
+            runtime.maps,
+            '#2563eb',
+            '실시간 현재 위치',
+          ),
+        }),
+      )
+    }
+
+    return () => liveOverlays.forEach((overlay) => overlay.setMap(null))
+  }, [
+    currentPosition,
+    isLiveMode,
+    mapReadyVersion,
+    stableRemainingCoordinates,
+  ])
 
   if (javaScriptKey === null) {
     return (
@@ -141,6 +209,9 @@ export function WalkingRouteMap({
         <span className="filtered-route-key">카카오 도보 경로</span>
         <span className="start-point-key">출발지</span>
         <span className="end-point-key">목적지</span>
+        {currentPosition !== null && (
+          <span className="current-position-key">현재 위치</span>
+        )}
       </p>
     </>
   )
