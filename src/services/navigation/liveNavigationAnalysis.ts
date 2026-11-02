@@ -89,7 +89,11 @@ export function calculateRouteProgress(
       : Math.max(0, previous.segmentIndex - config.segmentSearchBacktrack)
   const lastSegment =
     previous === null
-      ? coordinates.length - 2
+      // 첫 GPS는 겹치는 경로의 먼 뒷구간보다 출발부에 우선 대응시킨다.
+      ? Math.min(
+          coordinates.length - 2,
+          config.initialSegmentSearchForward,
+        )
       : Math.min(
           coordinates.length - 2,
           previous.segmentIndex + config.segmentSearchForward,
@@ -151,6 +155,19 @@ function median(values: number[]): number | null {
     : (sorted[middle - 1] + sorted[middle]) / 2
 }
 
+function getTrailingSpeeds(
+  speeds: number[],
+  predicate: (speedMps: number) => boolean,
+): number[] {
+  const trailing: number[] = []
+  for (let index = speeds.length - 1; index >= 0; index -= 1) {
+    const speedMps = speeds[index]
+    if (!predicate(speedMps)) break
+    trailing.unshift(speedMps)
+  }
+  return trailing
+}
+
 export function estimateRecentWalkingSpeed(
   observations: LiveNavigationObservation[],
   config: LiveNavigationConfig,
@@ -206,24 +223,53 @@ export function estimateRecentWalkingSpeed(
     }
   }
 
-  const speedMps = median(speeds)
-  if (
-    speedMps === null ||
-    speeds.length < config.minimumRecentSpeedSegments
-  ) {
+  const latestSpeedMps = speeds.at(-1)
+  if (latestSpeedMps === undefined) {
     return {
       state: 'uncertain',
       speedMps: null,
       validSegmentCount: speeds.length,
     }
   }
-  if (speedMps <= config.stationaryMaximumSpeedMps) {
-    return { state: 'stationary', speedMps, validSegmentCount: speeds.length }
+
+  const trailingStationarySpeeds = getTrailingSpeeds(
+    speeds,
+    (speedMps) => speedMps <= config.stationaryMaximumSpeedMps,
+  )
+  if (
+    latestSpeedMps <= config.stationaryMaximumSpeedMps &&
+    trailingStationarySpeeds.length >= config.minimumRecentSpeedSegments
+  ) {
+    return {
+      state: 'stationary',
+      speedMps: median(trailingStationarySpeeds),
+      validSegmentCount: trailingStationarySpeeds.length,
+    }
   }
-  if (speedMps >= config.movingMinimumSpeedMps) {
-    return { state: 'moving', speedMps, validSegmentCount: speeds.length }
+
+  const trailingMovingSpeeds = getTrailingSpeeds(
+    speeds,
+    (speedMps) => speedMps >= config.movingMinimumSpeedMps,
+  )
+  if (
+    latestSpeedMps >= config.movingMinimumSpeedMps &&
+    trailingMovingSpeeds.length >= config.minimumRecentSpeedSegments
+  ) {
+    return {
+      state: 'moving',
+      speedMps: median(trailingMovingSpeeds),
+      validSegmentCount: trailingMovingSpeeds.length,
+    }
   }
-  return { state: 'uncertain', speedMps, validSegmentCount: speeds.length }
+
+  return {
+    state: 'uncertain',
+    speedMps: null,
+    validSegmentCount: Math.max(
+      trailingMovingSpeeds.length,
+      trailingStationarySpeeds.length,
+    ),
+  }
 }
 
 export function combineWalkingSpeed(

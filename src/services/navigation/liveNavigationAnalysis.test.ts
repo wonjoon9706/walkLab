@@ -62,6 +62,30 @@ describe('실시간 경로 진행도', () => {
         liveNavigationConfig.maximumProgressBacktrackM,
     )
   })
+
+  it('첫 위치는 경로 앞부분에서만 대응시켜 겹친 뒷구간으로 점프하지 않는다', () => {
+    const longRoute = Array.from({ length: 27 }, (_value, index) => ({
+      latitude: 0,
+      longitude: index * 0.0001,
+    }))
+    longRoute.push(
+      { latitude: 0.00001, longitude: 0.00003 },
+      { latitude: 0.00001, longitude: 0 },
+    )
+
+    const result = calculateRouteProgress(
+      longRoute,
+      { latitude: 0.00001, longitude: 0 },
+      null,
+      liveNavigationConfig,
+    )
+
+    expect(result).not.toBeNull()
+    expect(result!.segmentIndex).toBeLessThanOrEqual(
+      liveNavigationConfig.initialSegmentSearchForward,
+    )
+    expect(result!.traveledDistanceM).toBeLessThan(5)
+  })
 })
 
 describe('최근 보행속도', () => {
@@ -113,6 +137,41 @@ describe('최근 보행속도', () => {
     expect(
       estimateRecentWalkingSpeed(observations, liveNavigationConfig),
     ).toEqual({ state: 'uncertain', speedMps: null, validSegmentCount: 0 })
+  })
+
+  it('정지 후 연속 이동 구간만으로 이동 재개를 판정한다', () => {
+    const observations = [
+      observation(0, 0, 0),
+      observation(0, 2_000, 0),
+      observation(0, 4_000, 0),
+      observation(0, 6_000, 0),
+      observation(0.00001, 8_000, 1),
+      observation(0.00002, 10_000, 1),
+      observation(0.00003, 12_000, 1),
+    ]
+
+    expect(
+      estimateRecentWalkingSpeed(observations, liveNavigationConfig),
+    ).toEqual({
+      state: 'moving',
+      speedMps: 1,
+      validSegmentCount: 3,
+    })
+  })
+
+  it('이동 관측이 두 개뿐이면 정지 후 이동 재개를 확정하지 않는다', () => {
+    const observations = [
+      observation(0, 0, 0),
+      observation(0, 2_000, 0),
+      observation(0, 4_000, 0),
+      observation(0, 6_000, 0),
+      observation(0.00001, 8_000, 1),
+      observation(0.00002, 10_000, 1),
+    ]
+
+    expect(
+      estimateRecentWalkingSpeed(observations, liveNavigationConfig).state,
+    ).toBe('uncertain')
   })
 
   it('좌표 튐과 비정상 장치 속도를 유효 속도로 사용하지 않는다', () => {

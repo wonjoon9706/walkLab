@@ -106,6 +106,7 @@ export function createLiveNavigationManager(
   let lastEtaEvaluationAtMs: number | null = null
   let lastEtaObservationAtMs: number | null = null
   let lastDisplayUpdateAtMs = 0
+  let movingSpeedCandidateStartedAtMs: number | null = null
   const listeners = new Set<(nextState: LiveNavigationState) => void>()
 
   function publish(partial: Partial<LiveNavigationState>) {
@@ -350,17 +351,32 @@ export function createLiveNavigationManager(
     )
 
     const recentSpeed = estimateRecentWalkingSpeed(observations, config)
+    if (recentSpeed.state === 'moving') {
+      movingSpeedCandidateStartedAtMs ??= now.getTime()
+    } else {
+      movingSpeedCandidateStartedAtMs = null
+    }
+    const movingSpeedCandidateDurationSeconds =
+      movingSpeedCandidateStartedAtMs === null
+        ? 0
+        : (now.getTime() - movingSpeedCandidateStartedAtMs) / 1000
+    // 출발·재개 직후의 순간값은 ETA에 바로 넣지 않고, 연속 이동이
+    // 충분히 유지된 뒤에만 기존 개인속도와 혼합한다.
+    const canUseRecentSpeed =
+      recentSpeed.state === 'moving' &&
+      recentSpeed.validSegmentCount >= config.minimumLiveSpeedSegments &&
+      movingSpeedCandidateDurationSeconds >= config.liveSpeedWarmupSeconds
     const combinedSpeed = combineWalkingSpeed(
       recentSpeed,
       input.baselineSpeed.speedMps,
       config,
     )
     const etaSpeedMps =
-      recentSpeed.state === 'moving'
+      canUseRecentSpeed
         ? combinedSpeed.speedMps
         : (state.appliedSpeedMps ?? input.baselineSpeed.speedMps)
     const etaSpeedSource =
-      recentSpeed.state === 'moving' && combinedSpeed.usesRecentSpeed
+      canUseRecentSpeed && combinedSpeed.usesRecentSpeed
         ? ('recent_blended' as const)
         : (state.speedSource ?? input.baselineSpeed.source)
     const recalculateEta = shouldRecalculateEta(
@@ -531,6 +547,7 @@ export function createLiveNavigationManager(
       lastEtaEvaluationAtMs = startedAtMs
       lastEtaObservationAtMs = null
       lastDisplayUpdateAtMs = startedAtMs
+      movingSpeedCandidateStartedAtMs = null
       const initialDurationSeconds =
         nextInput.route.distanceM / nextInput.baselineSpeed.speedMps
       state = {
@@ -588,6 +605,7 @@ export function createLiveNavigationManager(
       lastEtaEvaluationAtMs = null
       lastEtaObservationAtMs = null
       lastDisplayUpdateAtMs = 0
+      movingSpeedCandidateStartedAtMs = null
     },
     dispose() {
       stopResources()
@@ -597,6 +615,7 @@ export function createLiveNavigationManager(
       lastEtaEvaluationAtMs = null
       lastEtaObservationAtMs = null
       lastDisplayUpdateAtMs = 0
+      movingSpeedCandidateStartedAtMs = null
       listeners.clear()
     },
   }

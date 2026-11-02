@@ -8,6 +8,8 @@ export interface LiveNavigationConfig {
   recentSpeedWindowSeconds: number
   minimumRecentSpeedSegments: number
   recentSpeedWeight: number
+  liveSpeedWarmupSeconds: number
+  minimumLiveSpeedSegments: number
   etaRecalculationIntervalSeconds: number
   etaSmoothingAlpha: number
   displayUpdateIntervalMilliseconds: number
@@ -18,6 +20,7 @@ export interface LiveNavigationConfig {
   maximumRerouteCount: number
   segmentSearchBacktrack: number
   segmentSearchForward: number
+  initialSegmentSearchForward: number
   maximumProgressBacktrackM: number
 }
 
@@ -32,6 +35,8 @@ export const liveNavigationConfig: LiveNavigationConfig = {
   recentSpeedWindowSeconds: 20,
   minimumRecentSpeedSegments: 3,
   recentSpeedWeight: 0.6,
+  liveSpeedWarmupSeconds: 10,
+  minimumLiveSpeedSegments: 5,
   etaRecalculationIntervalSeconds: 5,
   etaSmoothingAlpha: 0.35,
   displayUpdateIntervalMilliseconds: 1_000,
@@ -42,5 +47,6 @@ export const liveNavigationConfig: LiveNavigationConfig = {
   maximumRerouteCount: 3,
   segmentSearchBacktrack: 3,
   segmentSearchForward: 25,
+  initialSegmentSearchForward: 25,
   maximumProgressBacktrackM: 10,
 }

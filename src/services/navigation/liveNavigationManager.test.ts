@@ -171,12 +171,24 @@ describe('실시간 안내 관리자', () => {
   it('충분한 최근 이동 관측이 쌓이면 혼합속도로 ETA를 갱신한다', () => {
     const test = setup()
     test.start()
-    const longitudes = [0, 0.00002, 0.00004, 0.00006]
-    longitudes.forEach((longitude, index) => {
+    const longitudes = Array.from(
+      { length: 10 },
+      (_value, index) => index * 0.00002,
+    )
+    longitudes.slice(0, -1).forEach((longitude, index) => {
       const timestamp = index * 2_000
       test.setNow(timestamp)
       test.position(createPosition(0, longitude, timestamp, 5, 1))
     })
+    const beforeRecentSpeedAdoption =
+      test.manager.getState().remainingDurationSeconds!
+    expect(test.manager.getState()).toMatchObject({
+      status: 'moving',
+      appliedSpeedMps: baselineSpeed.speedMps,
+      speedSource: 'personalized',
+    })
+    test.setNow(18_000)
+    test.position(createPosition(0, longitudes.at(-1)!, 18_000, 5, 1))
 
     expect(test.manager.getState()).toMatchObject({
       status: 'moving',
@@ -186,12 +198,11 @@ describe('실시간 안내 관리자', () => {
     expect(test.manager.getState().appliedSpeedMps).toBeCloseTo(1.16)
     expect(test.manager.getState().remainingDurationSeconds).toBeGreaterThan(0)
     expect(test.manager.getState().arrivalAt).not.toBeNull()
-    const initialDurationSeconds = route.distanceM / baselineSpeed.speedMps
     const rawDurationSeconds =
       test.manager.getState().remainingDistanceM! / 1.16
     expect(test.manager.getState().remainingDurationSeconds).toBeCloseTo(
-      initialDurationSeconds +
-        (rawDurationSeconds - initialDurationSeconds) * 0.35,
+      beforeRecentSpeedAdoption +
+        (rawDurationSeconds - beforeRecentSpeedAdoption) * 0.35,
     )
   })
 
@@ -240,7 +251,11 @@ describe('실시간 안내 관리자', () => {
     test.start()
     for (let timestamp = 0; timestamp <= 36_000; timestamp += 2_000) {
       test.setNow(timestamp)
-      test.position(createPosition(0, 0, timestamp, 5, 0))
+      const jitterLongitude =
+        (timestamp / 2_000) % 2 === 0 ? 0 : 0.000001
+      test.position(
+        createPosition(0, jitterLongitude, timestamp, 5, null),
+      )
       test.runDisplayUpdate()
     }
 
@@ -284,11 +299,62 @@ describe('실시간 안내 관리자', () => {
   }) => {
     const test = setup()
     test.start()
-    for (let index = 0; index < 7; index += 1) {
+    for (let index = 0; index < 10; index += 1) {
       const timestamp = index * 2_000
       test.setNow(timestamp)
       test.position(
         createPosition(0, index * 0.00001, timestamp, 5, speedMps),
+      )
+    }
+
+    const appliedSpeedMps = test.manager.getState().appliedSpeedMps!
+    if (expectedDirection === 'below') {
+      expect(appliedSpeedMps).toBeLessThan(baselineSpeed.speedMps)
+    } else {
+      expect(appliedSpeedMps).toBeGreaterThan(baselineSpeed.speedMps)
+    }
+  })
+
+  it.each([
+    { label: '느린 보행', speedMps: 0.8, expectedDirection: 'below' },
+    { label: '빠른 보행', speedMps: 2, expectedDirection: 'above' },
+  ])('정지 후 $label 재개는 워밍업 뒤 적용한다', ({
+    speedMps,
+    expectedDirection,
+  }) => {
+    const test = setup()
+    test.start()
+    for (let timestamp = 0; timestamp <= 6_000; timestamp += 2_000) {
+      test.setNow(timestamp)
+      test.position(createPosition(0, 0, timestamp, 5, 0))
+    }
+
+    for (let timestamp = 8_000; timestamp <= 18_000; timestamp += 2_000) {
+      test.setNow(timestamp)
+      test.position(
+        createPosition(
+          0,
+          ((timestamp - 6_000) / 2_000) * 0.00001,
+          timestamp,
+          5,
+          speedMps,
+        ),
+      )
+    }
+    expect(test.manager.getState().appliedSpeedMps).toBe(
+      baselineSpeed.speedMps,
+    )
+
+    for (let timestamp = 20_000; timestamp <= 24_000; timestamp += 2_000) {
+      test.setNow(timestamp)
+      test.position(
+        createPosition(
+          0,
+          ((timestamp - 6_000) / 2_000) * 0.00001,
+          timestamp,
+          5,
+          speedMps,
+        ),
       )
     }
 
