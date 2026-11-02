@@ -8,6 +8,9 @@ export interface LiveNavigationConfig {
   recentSpeedWindowSeconds: number
   minimumRecentSpeedSegments: number
   recentSpeedWeight: number
+  etaRecalculationIntervalSeconds: number
+  etaSmoothingAlpha: number
+  displayUpdateIntervalMilliseconds: number
   staleAfterSeconds: number
   offRouteDistanceM: number
   offRouteObservationCount: number
@@ -29,6 +32,9 @@ export const liveNavigationConfig: LiveNavigationConfig = {
   recentSpeedWindowSeconds: 20,
   minimumRecentSpeedSegments: 3,
   recentSpeedWeight: 0.6,
+  etaRecalculationIntervalSeconds: 5,
+  etaSmoothingAlpha: 0.35,
+  displayUpdateIntervalMilliseconds: 1_000,
   staleAfterSeconds: 20,
   offRouteDistanceM: 60,
   offRouteObservationCount: 3,

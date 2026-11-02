@@ -93,7 +93,7 @@ export function createLiveNavigationManager(
   let state: LiveNavigationState = { ...initialState }
   let collector: GpsCollector | null = null
   let unsubscribePositionSource: (() => void) | null = null
-  let staleIntervalId: number | null = null
+  let displayIntervalId: number | null = null
   let input: StartLiveNavigationInput | null = null
   let progress: RouteProgress | null = null
   let observations: LiveNavigationObservation[] = []
@@ -103,6 +103,9 @@ export function createLiveNavigationManager(
   let lastRerouteAtMs: number | null = null
   let rerouteInProgress = false
   let initialRerouteAttempted = false
+  let lastEtaEvaluationAtMs: number | null = null
+  let lastEtaObservationAtMs: number | null = null
+  let lastDisplayUpdateAtMs = 0
   const listeners = new Set<(nextState: LiveNavigationState) => void>()
 
   function publish(partial: Partial<LiveNavigationState>) {
@@ -115,10 +118,50 @@ export function createLiveNavigationManager(
     collector = null
     unsubscribePositionSource?.()
     unsubscribePositionSource = null
-    if (staleIntervalId !== null) {
-      dependencies.clearInterval(staleIntervalId)
-      staleIntervalId = null
+    if (displayIntervalId !== null) {
+      dependencies.clearInterval(displayIntervalId)
+      displayIntervalId = null
     }
+  }
+
+  function createEtaState(
+    remainingDistanceM: number,
+    speedMps: number,
+    now: Date,
+    applySmoothing: boolean,
+  ): Pick<
+    LiveNavigationState,
+    'remainingDurationSeconds' | 'arrivalAt'
+  > {
+    const rawDurationSeconds = remainingDistanceM / speedMps
+    const previousDurationSeconds = state.remainingDurationSeconds
+    const remainingDurationSeconds =
+      applySmoothing && previousDurationSeconds !== null
+        ? previousDurationSeconds +
+          (rawDurationSeconds - previousDurationSeconds) *
+            config.etaSmoothingAlpha
+        : rawDurationSeconds
+
+    return {
+      remainingDurationSeconds,
+      arrivalAt: new Date(
+        now.getTime() + remainingDurationSeconds * 1000,
+      ).toISOString(),
+    }
+  }
+
+  function shouldRecalculateEta(
+    nowMs: number,
+    measuredAtMs: number,
+  ): boolean {
+    const hasNewObservation =
+      lastEtaObservationAtMs === null ||
+      measuredAtMs > lastEtaObservationAtMs
+    const intervalPassed =
+      lastEtaEvaluationAtMs === null ||
+      nowMs - lastEtaEvaluationAtMs >=
+        config.etaRecalculationIntervalSeconds * 1000
+    return hasNewObservation && intervalPassed
   }
 
   async function rerouteFrom(position: GeoCoordinate) {
@@ -167,6 +210,19 @@ export function createLiveNavigationManager(
         config,
       )
       progress = nextProgress
+      const now = dependencies.now()
+      const nextRemainingDistanceM =
+        nextProgress?.remainingDistanceM ?? nextRoute.distanceM
+      const speedMps =
+        state.appliedSpeedMps ?? input.baselineSpeed.speedMps
+      const etaState = createEtaState(
+        nextRemainingDistanceM,
+        speedMps,
+        now,
+        false,
+      )
+      lastEtaEvaluationAtMs = now.getTime()
+      lastDisplayUpdateAtMs = now.getTime()
       publish({
         route: nextRoute,
         status: 'gps_unstable',
@@ -180,6 +236,7 @@ export function createLiveNavigationManager(
             : nextProgress.traveledDistanceM /
               (nextProgress.traveledDistanceM +
                 nextProgress.remainingDistanceM),
+        ...etaState,
         message: '현재 위치 기준 새 경로를 적용했습니다. 속도를 확인하는 중입니다.',
       })
     } catch {
@@ -298,8 +355,18 @@ export function createLiveNavigationManager(
       input.baselineSpeed.speedMps,
       config,
     )
-    const remainingDurationSeconds =
-      nextProgress.remainingDistanceM / combinedSpeed.speedMps
+    const etaSpeedMps =
+      recentSpeed.state === 'moving'
+        ? combinedSpeed.speedMps
+        : (state.appliedSpeedMps ?? input.baselineSpeed.speedMps)
+    const etaSpeedSource =
+      recentSpeed.state === 'moving' && combinedSpeed.usesRecentSpeed
+        ? ('recent_blended' as const)
+        : (state.speedSource ?? input.baselineSpeed.source)
+    const recalculateEta = shouldRecalculateEta(
+      now.getTime(),
+      measuredAtMs,
+    )
     const routeDistanceM =
       nextProgress.traveledDistanceM + nextProgress.remainingDistanceM
     const progressRatio =
@@ -322,20 +389,33 @@ export function createLiveNavigationManager(
           ? '최근 속도가 아직 충분하지 않아 학습속도로 계산합니다.'
           : null
 
+    const etaState = recalculateEta
+      ? createEtaState(
+          nextProgress.remainingDistanceM,
+          etaSpeedMps,
+          now,
+          true,
+        )
+      : null
+    if (recalculateEta) {
+      lastEtaEvaluationAtMs = now.getTime()
+      lastEtaObservationAtMs = measuredAtMs
+      lastDisplayUpdateAtMs = now.getTime()
+    }
+
     publish({
       status,
       remainingCoordinates: nextProgress.remainingCoordinates,
       remainingDistanceM: nextProgress.remainingDistanceM,
       progressRatio,
       recentSpeedMps: recentSpeed.speedMps,
-      appliedSpeedMps: combinedSpeed.speedMps,
-      speedSource: combinedSpeed.usesRecentSpeed
-        ? 'recent_blended'
-        : input.baselineSpeed.source,
-      remainingDurationSeconds,
-      arrivalAt: new Date(
-        now.getTime() + remainingDurationSeconds * 1000,
-      ).toISOString(),
+      ...(recalculateEta && etaState !== null
+        ? {
+            appliedSpeedMps: etaSpeedMps,
+            speedSource: etaSpeedSource,
+            ...etaState,
+          }
+        : {}),
       message,
     })
 
@@ -364,17 +444,50 @@ export function createLiveNavigationManager(
     })
   }
 
-  function checkStalePosition() {
+  function updateDisplayedEta() {
     if (!state.isActive) return
+    const now = dependencies.now()
+    const nowMs = now.getTime()
     const referenceTime = lastValidPositionAtMs ?? startedAtMs
     const elapsedSeconds =
-      (dependencies.now().getTime() - referenceTime) / 1000
+      (nowMs - referenceTime) / 1000
     if (elapsedSeconds >= config.staleAfterSeconds) {
       publish({
+        arrivalAt:
+          state.remainingDurationSeconds === null
+            ? null
+            : new Date(
+                nowMs + state.remainingDurationSeconds * 1000,
+              ).toISOString(),
         status: 'stale',
         message: '최근 GPS 위치가 갱신되지 않았습니다. 화면을 켠 채 GPS 신호를 확인해 주세요.',
       })
+      lastDisplayUpdateAtMs = nowMs
+      return
     }
+
+    const elapsedSinceDisplayUpdateSeconds = Math.max(
+      0,
+      (nowMs - lastDisplayUpdateAtMs) / 1000,
+    )
+    lastDisplayUpdateAtMs = nowMs
+    if (state.remainingDurationSeconds === null) return
+
+    // 이동 중에만 남은 보행시간을 줄인다. 정지·GPS 불안정 상태에서는
+    // 남은 시간은 유지하고 도착시각만 실제 경과만큼 뒤로 이동한다.
+    const remainingDurationSeconds =
+      state.status === 'moving'
+        ? Math.max(
+            0,
+            state.remainingDurationSeconds - elapsedSinceDisplayUpdateSeconds,
+          )
+        : state.remainingDurationSeconds
+    publish({
+      remainingDurationSeconds,
+      arrivalAt: new Date(
+        nowMs + remainingDurationSeconds * 1000,
+      ).toISOString(),
+    })
   }
 
   return {
@@ -415,6 +528,11 @@ export function createLiveNavigationManager(
       lastRerouteAtMs = null
       rerouteInProgress = false
       initialRerouteAttempted = false
+      lastEtaEvaluationAtMs = startedAtMs
+      lastEtaObservationAtMs = null
+      lastDisplayUpdateAtMs = startedAtMs
+      const initialDurationSeconds =
+        nextInput.route.distanceM / nextInput.baselineSpeed.speedMps
       state = {
         ...initialState,
         status: 'starting',
@@ -424,6 +542,10 @@ export function createLiveNavigationManager(
         remainingDistanceM: nextInput.route.distanceM,
         appliedSpeedMps: nextInput.baselineSpeed.speedMps,
         speedSource: nextInput.baselineSpeed.source,
+        remainingDurationSeconds: initialDurationSeconds,
+        arrivalAt: new Date(
+          startedAtMs + initialDurationSeconds * 1000,
+        ).toISOString(),
         message: '첫 GPS 위치를 기다리고 있습니다.',
       }
       listeners.forEach((listener) => listener(state))
@@ -437,7 +559,10 @@ export function createLiveNavigationManager(
             handlePositionError,
           )
         }
-        staleIntervalId = dependencies.setInterval(checkStalePosition, 5_000)
+        displayIntervalId = dependencies.setInterval(
+          updateDisplayedEta,
+          config.displayUpdateIntervalMilliseconds,
+        )
         return true
       } catch {
         stopResources()
@@ -460,12 +585,18 @@ export function createLiveNavigationManager(
       input = null
       progress = null
       observations = []
+      lastEtaEvaluationAtMs = null
+      lastEtaObservationAtMs = null
+      lastDisplayUpdateAtMs = 0
     },
     dispose() {
       stopResources()
       input = null
       progress = null
       observations = []
+      lastEtaEvaluationAtMs = null
+      lastEtaObservationAtMs = null
+      lastDisplayUpdateAtMs = 0
       listeners.clear()
     },
   }

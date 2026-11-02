@@ -99,6 +99,9 @@ function setup(requestRoute = vi.fn().mockResolvedValue(route)) {
     runStaleCheck() {
       intervalCallback?.()
     },
+    runDisplayUpdate() {
+      intervalCallback?.()
+    },
   }
 }
 
@@ -109,6 +112,10 @@ describe('실시간 안내 관리자', () => {
 
     expect(test.collector.start).toHaveBeenCalledOnce()
     expect(test.manager.getState().isActive).toBe(true)
+    expect(test.dependencies.setInterval).toHaveBeenCalledWith(
+      expect.any(Function),
+      1_000,
+    )
 
     test.manager.stop()
 
@@ -179,6 +186,118 @@ describe('실시간 안내 관리자', () => {
     expect(test.manager.getState().appliedSpeedMps).toBeCloseTo(1.16)
     expect(test.manager.getState().remainingDurationSeconds).toBeGreaterThan(0)
     expect(test.manager.getState().arrivalAt).not.toBeNull()
+    const initialDurationSeconds = route.distanceM / baselineSpeed.speedMps
+    const rawDurationSeconds =
+      test.manager.getState().remainingDistanceM! / 1.16
+    expect(test.manager.getState().remainingDurationSeconds).toBeCloseTo(
+      initialDurationSeconds +
+        (rawDurationSeconds - initialDurationSeconds) * 0.35,
+    )
+  })
+
+  it('이동 중 표시 ETA는 실제 경과시간만큼 1초 단위로 감소한다', () => {
+    const test = setup()
+    test.start()
+    const longitudes = [0, 0.00002, 0.00004, 0.00006]
+    longitudes.forEach((longitude, index) => {
+      const timestamp = index * 2_000
+      test.setNow(timestamp)
+      test.position(createPosition(0, longitude, timestamp, 5, 1))
+    })
+    const beforeTick = test.manager.getState().remainingDurationSeconds!
+
+    test.setNow(7_000)
+    test.runDisplayUpdate()
+
+    expect(test.manager.getState().status).toBe('moving')
+    expect(test.manager.getState().remainingDurationSeconds).toBeCloseTo(
+      beforeTick - 1,
+    )
+  })
+
+  it('새 GPS가 없으면 ETA를 새 측정값으로 재평가하지 않고 오래되면 멈춘다', () => {
+    const test = setup()
+    test.start()
+    const longitudes = [0, 0.00002, 0.00004, 0.00006]
+    longitudes.forEach((longitude, index) => {
+      const timestamp = index * 2_000
+      test.setNow(timestamp)
+      test.position(createPosition(0, longitude, timestamp, 5, 1))
+    })
+    const beforeSleep = test.manager.getState().remainingDurationSeconds!
+
+    test.setNow(30_000)
+    test.runDisplayUpdate()
+
+    expect(test.manager.getState().status).toBe('stale')
+    expect(test.manager.getState().remainingDurationSeconds).toBeCloseTo(
+      beforeSleep,
+    )
+  })
+
+  it('정지 중 남은 시간은 유지하고 도착시각만 실제 정지시간만큼 늦춘다', () => {
+    const test = setup()
+    test.start()
+    for (let timestamp = 0; timestamp <= 36_000; timestamp += 2_000) {
+      test.setNow(timestamp)
+      test.position(createPosition(0, 0, timestamp, 5, 0))
+      test.runDisplayUpdate()
+    }
+
+    const state = test.manager.getState()
+    expect(state.status).toBe('stationary')
+    expect(
+      Math.abs(
+        state.remainingDurationSeconds! -
+          route.distanceM / baselineSpeed.speedMps,
+      ),
+    ).toBeLessThan(1)
+    expect(Date.parse(state.arrivalAt!)).toBeGreaterThan(36_000)
+  })
+
+  it('정지 직후 한두 개의 빠른 관측만으로 ETA 적용속도를 바꾸지 않는다', () => {
+    const test = setup()
+    test.start()
+    for (let index = 0; index < 4; index += 1) {
+      const timestamp = index * 2_000
+      test.setNow(timestamp)
+      test.position(createPosition(0, 0, timestamp, 5, 0))
+    }
+
+    test.setNow(8_000)
+    test.position(createPosition(0, 0.00002, 8_000, 5, 3))
+    test.setNow(10_000)
+    test.position(createPosition(0, 0.00004, 10_000, 5, 3))
+
+    expect(test.manager.getState().appliedSpeedMps).toBe(
+      baselineSpeed.speedMps,
+    )
+    expect(test.manager.getState().speedSource).toBe('personalized')
+  })
+
+  it.each([
+    { label: '느린 보행', speedMps: 0.8, expectedDirection: 'below' },
+    { label: '빠른 보행', speedMps: 2, expectedDirection: 'above' },
+  ])('지속적인 $label 속도는 5초 재평가에 반영한다', ({
+    speedMps,
+    expectedDirection,
+  }) => {
+    const test = setup()
+    test.start()
+    for (let index = 0; index < 7; index += 1) {
+      const timestamp = index * 2_000
+      test.setNow(timestamp)
+      test.position(
+        createPosition(0, index * 0.00001, timestamp, 5, speedMps),
+      )
+    }
+
+    const appliedSpeedMps = test.manager.getState().appliedSpeedMps!
+    if (expectedDirection === 'below') {
+      expect(appliedSpeedMps).toBeLessThan(baselineSpeed.speedMps)
+    } else {
+      expect(appliedSpeedMps).toBeGreaterThan(baselineSpeed.speedMps)
+    }
   })
 
   it('급격한 진행도 점프는 남은 거리 계산에 반영하지 않는다', () => {
@@ -207,6 +326,7 @@ describe('실시간 안내 관리자', () => {
 
     test.setNow(8_000)
     test.position(createPosition(0, 0, 8_000, 5, 0))
+    test.runStaleCheck()
     const nextArrival = Date.parse(test.manager.getState().arrivalAt!)
 
     expect(test.manager.getState()).toMatchObject({
