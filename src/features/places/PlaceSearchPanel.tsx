@@ -23,6 +23,7 @@ interface PlaceSearchPanelProps {
   selectedPlace: PlaceSearchResult | null
   onSelect: (place: PlaceSearchResult) => void
   searchInitiallyOpen?: boolean
+  closedActions?: (openSearch: () => void) => ReactNode
   children?: ReactNode
 }
 
@@ -53,6 +54,7 @@ export function PlaceSearchPanel({
   selectedPlace,
   onSelect,
   searchInitiallyOpen = true,
+  closedActions,
   children,
 }: PlaceSearchPanelProps) {
   const containerRef = useRef<HTMLElement>(null)
@@ -196,13 +198,17 @@ export function PlaceSearchPanel({
       )}
       {children}
       {!isSearchOpen ? (
-        <button
-          type="button"
-          className="secondary-button place-change-button"
-          onClick={() => setIsSearchOpen(true)}
-        >
-          {title} 변경
-        </button>
+        closedActions === undefined ? (
+          <button
+            type="button"
+            className="secondary-button place-change-button"
+            onClick={() => setIsSearchOpen(true)}
+          >
+            {title} 변경
+          </button>
+        ) : (
+          closedActions(() => setIsSearchOpen(true))
+        )
       ) : (
         <form
           className="route-search-form"

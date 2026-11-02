@@ -24,13 +24,20 @@ import {
 } from '../services/routing/walkingEta'
 import { walkingRouteClient } from '../services/routing/walkingRouteClient'
 import {
+  calculateCoordinateGapM,
+  calculateWalkingRouteEndpointGaps,
+} from '../services/routing/walkingRouteDiagnostics'
+import {
   formatDistance,
   formatDuration,
   formatKoreanArrivalTime,
 } from '../utils/format'
 
 type LoadingStatus = 'idle' | 'loading' | 'ready' | 'error'
-type OriginSource = 'current_location' | 'searched_place'
+type OriginSource = 'current_location' | 'searched_place' | 'map'
+
+const GPS_ACCURACY_WARNING_M = 50
+const ROUTE_START_GAP_WARNING_M = 15
 
 interface GuidanceResult {
   durationSeconds: number | null
@@ -88,11 +95,25 @@ function getLocationErrorMessage(error: unknown): string {
       return '위치 권한이 거부되었습니다. Safari 설정에서 WalkLab의 위치 권한을 허용해 주세요.'
     case 'TIMEOUT':
       return '현재 위치 확인 시간이 초과되었습니다. 하늘이 보이는 곳에서 다시 시도해 주세요.'
+    case 'STALE_POSITION':
+      return '오래된 위치가 수신되어 현재 위치로 사용하지 않았습니다. 다시 시도해 주세요.'
     case 'UNSUPPORTED':
       return '이 브라우저에서는 현재 위치 기능을 사용할 수 없습니다.'
     default:
       return 'GPS에서 현재 위치를 받지 못했습니다. 잠시 후 다시 시도해 주세요.'
   }
+}
+
+function formatLocationMeasuredAt(measuredAt: string | null): string | null {
+  if (measuredAt === null) return null
+  const date = new Date(measuredAt)
+  if (!Number.isFinite(date.getTime())) return null
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(date)
 }
 
 function getRouteErrorMessage(error: unknown): string {
@@ -135,6 +156,8 @@ export function WalkingRoutePage() {
   const stopMeasurementOnUnmount = measurement.stopMeasurement
   const stopNavigationOnUnmount = navigation.stop
   const routeRequestIdRef = useRef(0)
+  const locationRequestIdRef = useRef(0)
+  const originSourceRef = useRef<OriginSource>('current_location')
   const linkedMeasurementRef = useRef(false)
   const guidanceStartingRef = useRef(false)
   const guidanceStartCancelledRef = useRef(false)
@@ -147,6 +170,8 @@ export function WalkingRoutePage() {
   const [currentLocation, setCurrentLocation] =
     useState<GeoCoordinate | null>(null)
   const [currentAccuracyM, setCurrentAccuracyM] = useState<number | null>(null)
+  const [currentLocationMeasuredAt, setCurrentLocationMeasuredAt] =
+    useState<string | null>(null)
   const [locationStatus, setLocationStatus] =
     useState<LoadingStatus>('loading')
   const [locationError, setLocationError] = useState<string | null>(null)
@@ -164,6 +189,8 @@ export function WalkingRoutePage() {
   const [showGuidanceSaveResult, setShowGuidanceSaveResult] = useState(false)
   const [guidanceResult, setGuidanceResult] =
     useState<GuidanceResult | null>(null)
+  const [isMapOriginSelectionEnabled, setIsMapOriginSelectionEnabled] =
+    useState(false)
   const displayedRoute =
     navigation.isActive && navigation.route !== null
       ? navigation.route
@@ -187,6 +214,20 @@ export function WalkingRoutePage() {
       return null
     }
   }, [displayedRoute, speedModel])
+
+  const routeEndpointGaps = useMemo(() => {
+    if (route === null || origin === null || destination === null) return null
+    return calculateWalkingRouteEndpointGaps(
+      route,
+      origin,
+      destination.coordinate,
+    )
+  }, [destination, origin, route])
+
+  const gpsToOriginGapM = useMemo(() => {
+    if (currentLocation === null || origin === null) return null
+    return calculateCoordinateGapM(currentLocation, origin)
+  }, [currentLocation, origin])
 
   useEffect(() => {
     isMountedRef.current = true
@@ -228,25 +269,31 @@ export function WalkingRoutePage() {
   }
 
   async function loadLocation() {
-    routeRequestIdRef.current += 1
+    const locationRequestId = locationRequestIdRef.current + 1
+    locationRequestIdRef.current = locationRequestId
     setLocationStatus('loading')
     setLocationError(null)
-    setRoute(null)
-    setRouteError(null)
-    setRouteStatus('idle')
     try {
       const fix = await getCurrentLocationFix()
+      if (locationRequestIdRef.current !== locationRequestId) return
       const coordinate = fix.coordinate
       setCurrentLocation(coordinate)
       setCurrentAccuracyM(fix.accuracyM)
+      setCurrentLocationMeasuredAt(fix.measuredAt)
       setOrigin(coordinate)
+      originSourceRef.current = 'current_location'
       setOriginSource('current_location')
       setOriginPlace(null)
+      setIsMapOriginSelectionEnabled(false)
       setLocationStatus('ready')
+      setRoute(null)
+      setRouteError(null)
+      setRouteStatus('idle')
       if (destination !== null) {
         await requestRoute(coordinate, destination)
       }
     } catch (error) {
+      if (locationRequestIdRef.current !== locationRequestId) return
       setLocationStatus('error')
       setLocationError(getLocationErrorMessage(error))
     }
@@ -254,19 +301,30 @@ export function WalkingRoutePage() {
 
   useEffect(() => {
     let isCurrent = true
+    const locationRequestId = locationRequestIdRef.current + 1
+    locationRequestIdRef.current = locationRequestId
     async function loadInitialLocation() {
       try {
         const fix = await getCurrentLocationFix()
         const coordinate = fix.coordinate
-        if (isCurrent) {
+        if (
+          isCurrent &&
+          locationRequestIdRef.current === locationRequestId &&
+          originSourceRef.current === 'current_location'
+        ) {
           setCurrentLocation(coordinate)
           setCurrentAccuracyM(fix.accuracyM)
+          setCurrentLocationMeasuredAt(fix.measuredAt)
           setOrigin(coordinate)
           setOriginSource('current_location')
           setLocationStatus('ready')
         }
       } catch (error) {
-        if (isCurrent) {
+        if (
+          isCurrent &&
+          locationRequestIdRef.current === locationRequestId &&
+          originSourceRef.current === 'current_location'
+        ) {
           setLocationStatus('error')
           setLocationError(getLocationErrorMessage(error))
         }
@@ -307,17 +365,45 @@ export function WalkingRoutePage() {
     if (navigation.isActive || linkedMeasurementRef.current) {
       void stopNavigation()
     }
+    locationRequestIdRef.current += 1
     routeRequestIdRef.current += 1
+    originSourceRef.current = 'searched_place'
     setOrigin(place.coordinate)
     setOriginSource('searched_place')
     setOriginPlace(place)
-    setLocationStatus('ready')
+    setIsMapOriginSelectionEnabled(false)
     setLocationError(null)
     setRoute(null)
     setRouteError(null)
     setRouteStatus('idle')
     if (destination !== null) {
       void requestRoute(place.coordinate, destination)
+    }
+  }
+
+  function selectMapOrigin(coordinate: GeoCoordinate) {
+    if (navigation.isActive || linkedMeasurementRef.current) return
+
+    const mapOrigin: PlaceSearchResult = {
+      id: `map-${coordinate.latitude}-${coordinate.longitude}`,
+      name: '지도에서 지정한 위치',
+      address: `위도 ${coordinate.latitude.toFixed(6)}, 경도 ${coordinate.longitude.toFixed(6)}`,
+      roadAddress: null,
+      coordinate,
+    }
+    locationRequestIdRef.current += 1
+    routeRequestIdRef.current += 1
+    originSourceRef.current = 'map'
+    setOrigin(coordinate)
+    setOriginSource('map')
+    setOriginPlace(mapOrigin)
+    setIsMapOriginSelectionEnabled(false)
+    setLocationError(null)
+    setRoute(null)
+    setRouteError(null)
+    setRouteStatus('idle')
+    if (destination !== null) {
+      void requestRoute(coordinate, destination)
     }
   }
 
@@ -365,6 +451,7 @@ export function WalkingRoutePage() {
         const latestFix = await getCurrentLocationFix()
         setCurrentLocation(latestFix.coordinate)
         setCurrentAccuracyM(latestFix.accuracyM)
+        setCurrentLocationMeasuredAt(latestFix.measuredAt)
         setOrigin(latestFix.coordinate)
         const refreshedRoute = await requestRoute(
           latestFix.coordinate,
@@ -401,7 +488,7 @@ export function WalkingRoutePage() {
         route: routeForNavigation,
         destination: destination.coordinate,
         baselineSpeed,
-        forceInitialReroute: originSource === 'searched_place',
+        forceInitialReroute: originSource !== 'current_location',
       },
       { subscribe: measurement.subscribeGps },
     )
@@ -475,6 +562,36 @@ export function WalkingRoutePage() {
               selectedPlace={originPlace}
               onSelect={selectOrigin}
               searchInitiallyOpen={false}
+              closedActions={(openSearch) => (
+                <div
+                  className="origin-choice-actions"
+                  aria-label="출발지 변경 방법"
+                >
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={locationStatus === 'loading'}
+                    onClick={() => void loadLocation()}
+                  >
+                    현재 위치 사용
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={openSearch}
+                  >
+                    장소 또는 주소 검색
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    aria-pressed={isMapOriginSelectionEnabled}
+                    onClick={() => setIsMapOriginSelectionEnabled(true)}
+                  >
+                    지도에서 직접 선택
+                  </button>
+                </div>
+              )}
             >
               {locationStatus === 'loading' && (
                 <p role="status">현재 위치를 확인하는 중입니다.</p>
@@ -489,6 +606,10 @@ export function WalkingRoutePage() {
                           currentAccuracyM === null
                             ? ''
                             : ` · 정확도 약 ${Math.round(currentAccuracyM)}m`
+                        }${
+                          formatLocationMeasuredAt(currentLocationMeasuredAt) === null
+                            ? ''
+                            : ` · ${formatLocationMeasuredAt(currentLocationMeasuredAt)} 측정`
                         }`
                       : locationStatus === 'loading'
                         ? 'GPS 확인 중'
@@ -496,20 +617,25 @@ export function WalkingRoutePage() {
                   </span>
                 </p>
               )}
+              {originSource === 'current_location' &&
+                currentAccuracyM !== null &&
+                currentAccuracyM > GPS_ACCURACY_WARNING_M && (
+                  <p className="auth-message warning-card">
+                    GPS 오차 범위가 큽니다. 다시 확인하거나 장소 검색·지도
+                    선택으로 출발지를 지정해 주세요.
+                  </p>
+                )}
+              {originSource !== 'current_location' &&
+                gpsToOriginGapM !== null && (
+                  <p className="auth-message">
+                    현재 GPS 위치와 지정한 출발지는 약{' '}
+                    {Math.round(gpsToOriginGapM)}m 떨어져 있습니다.
+                  </p>
+                )}
               {locationError !== null && (
                 <p className="error-message auth-message" role="alert">
                   {locationError}
                 </p>
-              )}
-              {(locationStatus === 'error' || originSource === 'searched_place') && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={locationStatus === 'loading'}
-                  onClick={() => void loadLocation()}
-                >
-                  내 위치 사용
-                </button>
               )}
             </PlaceSearchPanel>
 
@@ -542,7 +668,21 @@ export function WalkingRoutePage() {
             remainingCoordinates={
               navigation.isActive ? navigation.remainingCoordinates : undefined
             }
+            isStartSelectionEnabled={isMapOriginSelectionEnabled}
+            onSelectStart={selectMapOrigin}
+            onCancelStartSelection={() =>
+              setIsMapOriginSelectionEnabled(false)
+            }
           />
+          {routeEndpointGaps !== null &&
+            routeEndpointGaps.startGapM > ROUTE_START_GAP_WARNING_M && (
+              <p className="auth-message warning-card" role="status">
+                카카오 도보 경로는 지정한 출발지에서 약{' '}
+                {Math.round(routeEndpointGaps.startGapM)}m 떨어진 보행 접근점에서
+                시작합니다. 필요하면 지도에서 실제 출발 위치를 다시 지정해
+                주세요.
+              </p>
+            )}
           {routeStatus === 'loading' && (
             <p role="status">도보 경로를 조회하는 중입니다.</p>
           )}

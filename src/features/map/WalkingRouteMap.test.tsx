@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { KakaoMapsNamespace } from './kakaoMapSdk'
 
@@ -23,24 +23,57 @@ function createFakeMaps() {
   const removedOverlays: unknown[] = []
   const setBounds = vi.fn()
   const setCenter = vi.fn()
+  const setDraggable = vi.fn()
   const circleOptions: unknown[] = []
+  let markerDragEndHandler: (() => void) | null = null
+  const draggableMarkers: Marker[] = []
+  const addListener = vi.fn(
+    (_target, eventName: string, handler) => {
+      if (eventName === 'dragend') markerDragEndHandler = handler
+    },
+  )
+  const removeListener = vi.fn()
 
   class LatLng {
+    latitude: number
+    longitude: number
+
     constructor(latitude: number, longitude: number) {
+      this.latitude = latitude
+      this.longitude = longitude
       latLngArguments.push([latitude, longitude])
     }
-    getLat() { return 0 }
-    getLng() { return 0 }
+    getLat() { return this.latitude }
+    getLng() { return this.longitude }
   }
   class LatLngBounds { extend = vi.fn() }
-  class Map { addControl = vi.fn(); setBounds = setBounds; setCenter = setCenter }
+  class Map {
+    addControl = vi.fn()
+    setBounds = setBounds
+    setCenter = setCenter
+    setDraggable = setDraggable
+    getProjection() {
+      return {
+        coordsFromContainerPoint: (point: Point) =>
+          new LatLng(37.5 + point.y / 100_000, 127.1 + point.x / 100_000),
+      }
+    }
+  }
   class Polyline {
     constructor(options: unknown) { polylineOptions.push(options) }
     setMap(map: unknown) { removedOverlays.push(map) }
   }
   class Marker {
-    constructor(options: unknown) { markerOptions.push(options) }
+    position: LatLng
+
+    constructor(options: { position: LatLng; draggable?: boolean }) {
+      this.position = options.position
+      markerOptions.push(options)
+      if (options.draggable) draggableMarkers.push(this)
+    }
     setMap(map: unknown) { removedOverlays.push(map) }
+    setPosition(position: LatLng) { this.position = position }
+    getPosition() { return this.position }
   }
   class Circle {
     constructor(options: unknown) { circleOptions.push(options) }
@@ -48,7 +81,9 @@ function createFakeMaps() {
   }
   class MarkerImage {}
   class Size {}
-  class Point {}
+  class Point {
+    constructor(public x: number, public y: number) {}
+  }
   class ZoomControl {}
 
   const maps = {
@@ -63,6 +98,7 @@ function createFakeMaps() {
     Point,
     ZoomControl,
     ControlPosition: { RIGHT: 'right' },
+    event: { addListener, removeListener },
   } as unknown as KakaoMapsNamespace
 
   return {
@@ -73,11 +109,21 @@ function createFakeMaps() {
     removedOverlays,
     setBounds,
     setCenter,
+    setDraggable,
     circleOptions,
+    addListener,
+    removeListener,
+    dragDraftMarker(latitude: number, longitude: number) {
+      draggableMarkers.at(-1)?.setPosition(new LatLng(latitude, longitude))
+      markerDragEndHandler?.()
+    },
   }
 }
 
-afterEach(() => loadKakaoMapSdkMock.mockReset())
+afterEach(() => {
+  vi.useRealTimers()
+  loadKakaoMapSdkMock.mockReset()
+})
 
 describe('WalkingRouteMap', () => {
   it('도보 경로와 출발·도착 마커를 표시하고 교체 시 정리한다', async () => {
@@ -167,5 +213,140 @@ describe('WalkingRouteMap', () => {
     expect(fake.setCenter).toHaveBeenCalledOnce()
     expect(screen.getByText('현재 위치')).toBeInTheDocument()
     expect(screen.queryByText('카카오 도보 경로')).toBeNull()
+  })
+
+  it('짧은 터치는 출발지를 만들지 않고 500ms 길게 누른 뒤 확정한다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+    const onSelectStart = vi.fn()
+    const onCancelStartSelection = vi.fn()
+    const view = render(
+      <WalkingRouteMap
+        start={{ latitude: 37.5, longitude: 127.1 }}
+        isStartSelectionEnabled
+        onSelectStart={onSelectStart}
+        onCancelStartSelection={onCancelStartSelection}
+      />,
+    )
+
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(1))
+    const map = screen.getByLabelText('출발지에서 목적지까지의 도보 경로 지도')
+    vi.useFakeTimers()
+
+    fireEvent.pointerDown(map, {
+      pointerId: 1,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 100,
+      clientY: 200,
+    })
+    act(() => vi.advanceTimersByTime(499))
+    expect(screen.queryByRole('button', { name: '이 위치로 출발' })).toBeNull()
+
+    fireEvent.pointerUp(window, { pointerId: 1, pointerType: 'touch' })
+    act(() => vi.advanceTimersByTime(1))
+    expect(screen.queryByRole('button', { name: '이 위치로 출발' })).toBeNull()
+
+    fireEvent.pointerDown(map, {
+      pointerId: 2,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 100,
+      clientY: 200,
+    })
+    act(() => vi.advanceTimersByTime(500))
+
+    expect(fake.setDraggable).toHaveBeenCalledWith(false)
+    expect(fake.markerOptions).toHaveLength(2)
+    expect(onSelectStart).not.toHaveBeenCalled()
+    fireEvent.pointerMove(map, {
+      pointerId: 2,
+      pointerType: 'touch',
+      clientX: 120,
+      clientY: 210,
+    })
+    fireEvent.click(screen.getByRole('button', { name: '이 위치로 출발' }))
+
+    const selectedCoordinate = onSelectStart.mock.calls[0][0]
+    expect(selectedCoordinate.latitude).toBeCloseTo(37.5021)
+    expect(selectedCoordinate.longitude).toBeCloseTo(127.1012)
+    fireEvent.pointerUp(window, { pointerId: 2, pointerType: 'touch' })
+    expect(fake.setDraggable).toHaveBeenLastCalledWith(true)
+    fireEvent.click(screen.getByRole('button', { name: '취소' }))
+    expect(onCancelStartSelection).toHaveBeenCalledOnce()
+
+    view.unmount()
+    expect(fake.removeListener).toHaveBeenCalledWith(
+      expect.anything(),
+      'dragend',
+      expect.any(Function),
+    )
+  })
+
+  it('길게 누르기 전 10px 넘게 움직이면 일반 지도 이동으로 유지한다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+    render(
+      <WalkingRouteMap
+        start={{ latitude: 37.5, longitude: 127.1 }}
+        isStartSelectionEnabled
+        onSelectStart={vi.fn()}
+      />,
+    )
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(1))
+    const map = screen.getByLabelText('출발지에서 목적지까지의 도보 경로 지도')
+    vi.useFakeTimers()
+
+    fireEvent.pointerDown(map, {
+      pointerId: 3,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: 20,
+      clientY: 20,
+    })
+    fireEvent.pointerMove(map, {
+      pointerId: 3,
+      pointerType: 'touch',
+      clientX: 40,
+      clientY: 20,
+    })
+    act(() => vi.advanceTimersByTime(500))
+
+    expect(fake.markerOptions).toHaveLength(1)
+    expect(fake.setDraggable).not.toHaveBeenCalledWith(false)
+    expect(screen.queryByRole('button', { name: '이 위치로 출발' })).toBeNull()
+  })
+
+  it('임시 마커를 드래그한 마지막 좌표만 확정한다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+    const onSelectStart = vi.fn()
+    render(
+      <WalkingRouteMap
+        start={{ latitude: 37.5, longitude: 127.1 }}
+        isStartSelectionEnabled
+        onSelectStart={onSelectStart}
+      />,
+    )
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(1))
+    const map = screen.getByLabelText('출발지에서 목적지까지의 도보 경로 지도')
+    vi.useFakeTimers()
+    fireEvent.pointerDown(map, {
+      pointerId: 4,
+      pointerType: 'mouse',
+      isPrimary: true,
+      button: 0,
+      clientX: 50,
+      clientY: 50,
+    })
+    act(() => vi.advanceTimersByTime(500))
+    fireEvent.pointerUp(window, { pointerId: 4, pointerType: 'mouse' })
+
+    act(() => fake.dragDraftMarker(37.551, 126.991))
+    fireEvent.click(screen.getByRole('button', { name: '이 위치로 출발' }))
+    expect(onSelectStart).toHaveBeenCalledWith({
+      latitude: 37.551,
+      longitude: 126.991,
+    })
   })
 })

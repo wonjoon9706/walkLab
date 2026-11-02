@@ -5,6 +5,7 @@ import {
   loadKakaoMapSdk,
   type KakaoLatLng,
   type KakaoMapInstance,
+  type KakaoMarker,
   type KakaoMapOverlay,
   type KakaoMapsNamespace,
 } from './kakaoMapSdk'
@@ -16,6 +17,9 @@ interface WalkingRouteMapProps {
   currentPosition?: GeoCoordinate | null
   currentAccuracyM?: number | null
   remainingCoordinates?: GeoCoordinate[]
+  isStartSelectionEnabled?: boolean
+  onSelectStart?: (coordinate: GeoCoordinate) => void
+  onCancelStartSelection?: () => void
 }
 
 interface MapRuntime {
@@ -24,12 +28,34 @@ interface MapRuntime {
 }
 
 const EMPTY_COORDINATES: GeoCoordinate[] = []
+const LONG_PRESS_DURATION_MS = 500
+const LONG_PRESS_MOVE_TOLERANCE_PX = 10
+
+interface LongPressState {
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  activated: boolean
+  timerId: number
+}
+
+interface StartSelectionState {
+  isEnabled: boolean
+  draftStart: GeoCoordinate | null
+}
 
 function toKakaoPosition(
   maps: KakaoMapsNamespace,
   coordinate: GeoCoordinate,
 ): KakaoLatLng {
   return new maps.LatLng(coordinate.latitude, coordinate.longitude)
+}
+
+function toGeoCoordinate(position: KakaoLatLng): GeoCoordinate {
+  return {
+    latitude: position.getLat(),
+    longitude: position.getLng(),
+  }
 }
 
 function createMarkerImage(
@@ -61,11 +87,19 @@ export function WalkingRouteMap({
   currentPosition = null,
   currentAccuracyM = null,
   remainingCoordinates,
+  isStartSelectionEnabled = false,
+  onSelectStart,
+  onCancelStartSelection,
 }: WalkingRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<MapRuntime | null>(null)
+  const onSelectStartRef = useRef(onSelectStart)
   const [mapError, setMapError] = useState<string | null>(null)
   const [mapReadyVersion, setMapReadyVersion] = useState(0)
+  const [startSelection, setStartSelection] = useState<StartSelectionState>({
+    isEnabled: isStartSelectionEnabled,
+    draftStart: null,
+  })
   const javaScriptKey = publicEnvironment.kakaoMapJavaScriptKey
   const stableCoordinates = useMemo(() => coordinates, [coordinates])
   const stableRemainingCoordinates = useMemo(
@@ -73,6 +107,18 @@ export function WalkingRouteMap({
     [remainingCoordinates],
   )
   const isLiveMode = remainingCoordinates !== undefined
+
+  useEffect(() => {
+    onSelectStartRef.current = onSelectStart
+  }, [onSelectStart])
+
+  if (startSelection.isEnabled !== isStartSelectionEnabled) {
+    setStartSelection({
+      isEnabled: isStartSelectionEnabled,
+      draftStart: null,
+    })
+  }
+  const draftStart = startSelection.draftStart
 
   useEffect(() => {
     const container = containerRef.current
@@ -85,6 +131,10 @@ export function WalkingRouteMap({
 
     let isDisposed = false
     const overlays: KakaoMapOverlay[] = []
+    let draftMarker: KakaoMarker | null = null
+    let draftMarkerDragEndHandler: (() => void) | null = null
+    let longPressState: LongPressState | null = null
+    let removeSelectionListeners: (() => void) | null = null
     setMapError(null)
 
     void loadKakaoMapSdk(javaScriptKey)
@@ -103,6 +153,178 @@ export function WalkingRouteMap({
           level: 4,
         })
         map.addControl(new maps.ZoomControl(), maps.ControlPosition.RIGHT)
+
+        if (isStartSelectionEnabled && onSelectStartRef.current !== undefined) {
+          const getPointerPosition = (event: PointerEvent) => {
+            const bounds = container.getBoundingClientRect()
+            const point = new maps.Point(
+              event.clientX - bounds.left,
+              event.clientY - bounds.top,
+            )
+            return map.getProjection().coordsFromContainerPoint(point)
+          }
+
+          const setDraftMarkerPosition = (position: KakaoLatLng) => {
+            const coordinate = toGeoCoordinate(position)
+            if (
+              !Number.isFinite(coordinate.latitude) ||
+              !Number.isFinite(coordinate.longitude)
+            ) {
+              return
+            }
+
+            if (draftMarker === null) {
+              draftMarker = new maps.Marker({
+                map,
+                position,
+                image: createMarkerImage(
+                  maps,
+                  '#d97706',
+                  '임시 출발지',
+                ),
+                draggable: true,
+              })
+              draftMarkerDragEndHandler = () => {
+                if (draftMarker !== null) {
+                  const coordinate = toGeoCoordinate(
+                    draftMarker.getPosition(),
+                  )
+                  setStartSelection((current) => ({
+                    ...current,
+                    draftStart: coordinate,
+                  }))
+                }
+              }
+              maps.event.addListener(
+                draftMarker,
+                'dragend',
+                draftMarkerDragEndHandler,
+              )
+            } else {
+              draftMarker.setPosition(position)
+            }
+            setStartSelection((current) => ({
+              ...current,
+              draftStart: coordinate,
+            }))
+          }
+
+          const clearLongPress = () => {
+            if (longPressState !== null) {
+              window.clearTimeout(longPressState.timerId)
+              longPressState = null
+            }
+          }
+
+          const handlePointerDown = (event: PointerEvent) => {
+            if (draftMarker !== null) return
+            if (
+              event.isPrimary === false ||
+              (event.pointerType === 'mouse' && event.button !== 0)
+            ) {
+              if (longPressState?.activated) map.setDraggable(true)
+              clearLongPress()
+              return
+            }
+            if (longPressState !== null) {
+              if (longPressState.activated) map.setDraggable(true)
+              clearLongPress()
+              return
+            }
+
+            const state: LongPressState = {
+              pointerId: event.pointerId,
+              startClientX: event.clientX,
+              startClientY: event.clientY,
+              activated: false,
+              timerId: 0,
+            }
+            state.timerId = window.setTimeout(() => {
+              if (longPressState !== state || isDisposed) return
+              state.activated = true
+              map.setDraggable(false)
+              setDraftMarkerPosition(getPointerPosition(event))
+            }, LONG_PRESS_DURATION_MS)
+            longPressState = state
+          }
+
+          const handlePointerMove = (event: PointerEvent) => {
+            const state = longPressState
+            if (state === null || event.pointerId !== state.pointerId) return
+
+            const movedDistance = Math.hypot(
+              event.clientX - state.startClientX,
+              event.clientY - state.startClientY,
+            )
+            if (!state.activated) {
+              if (movedDistance > LONG_PRESS_MOVE_TOLERANCE_PX) {
+                clearLongPress()
+              }
+              return
+            }
+
+            event.preventDefault()
+            event.stopPropagation()
+            setDraftMarkerPosition(getPointerPosition(event))
+          }
+
+          const finishPointerInteraction = (event: PointerEvent) => {
+            const state = longPressState
+            if (state === null || event.pointerId !== state.pointerId) return
+            if (state.activated) {
+              event.preventDefault()
+              event.stopPropagation()
+            }
+            clearLongPress()
+            map.setDraggable(true)
+          }
+
+          const preventLongPressMenu = (event: Event) => {
+            event.preventDefault()
+          }
+
+          container.addEventListener('pointerdown', handlePointerDown, true)
+          container.addEventListener('pointermove', handlePointerMove, {
+            capture: true,
+            passive: false,
+          })
+          container.addEventListener('contextmenu', preventLongPressMenu)
+          window.addEventListener('pointerup', finishPointerInteraction, true)
+          window.addEventListener(
+            'pointercancel',
+            finishPointerInteraction,
+            true,
+          )
+
+          removeSelectionListeners = () => {
+            clearLongPress()
+            map.setDraggable(true)
+            container.removeEventListener(
+              'pointerdown',
+              handlePointerDown,
+              true,
+            )
+            container.removeEventListener(
+              'pointermove',
+              handlePointerMove,
+              true,
+            )
+            container.removeEventListener(
+              'contextmenu',
+              preventLongPressMenu,
+            )
+            window.removeEventListener(
+              'pointerup',
+              finishPointerInteraction,
+              true,
+            )
+            window.removeEventListener(
+              'pointercancel',
+              finishPointerInteraction,
+              true,
+            )
+          }
+        }
 
         if (path.length >= 2) {
           overlays.push(new maps.Polyline({
@@ -148,6 +370,14 @@ export function WalkingRouteMap({
 
     return () => {
       isDisposed = true
+      removeSelectionListeners?.()
+      if (draftMarker !== null && draftMarkerDragEndHandler !== null) {
+        const marker = draftMarker as KakaoMarker
+        const handler = draftMarkerDragEndHandler as () => void
+        const runtime = runtimeRef.current
+        runtime?.maps.event.removeListener(marker, 'dragend', handler)
+      }
+      draftMarker?.setMap(null)
       runtimeRef.current = null
       overlays.forEach((overlay) => overlay.setMap(null))
       container.replaceChildren()
@@ -155,6 +385,7 @@ export function WalkingRouteMap({
   }, [
     destination,
     isLiveMode,
+    isStartSelectionEnabled,
     javaScriptKey,
     stableCoordinates,
     start,
@@ -228,11 +459,40 @@ export function WalkingRouteMap({
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className="route-map"
-        aria-label="출발지에서 목적지까지의 도보 경로 지도"
-      />
+      <div className="route-map-shell">
+        <div
+          ref={containerRef}
+          className="route-map"
+          aria-label="출발지에서 목적지까지의 도보 경로 지도"
+        />
+        {isStartSelectionEnabled && (
+          <div className="map-selection-banner" role="status">
+            <span>
+              {draftStart === null
+                ? '지도를 0.5초 길게 눌러 출발 위치를 선택하세요.'
+                : '마커를 드래그해 위치를 조정하세요.'}
+            </span>
+            <div className="map-selection-actions">
+              {draftStart !== null && (
+                <button
+                  type="button"
+                  className="primary-button map-selection-confirm-button"
+                  onClick={() => onSelectStartRef.current?.(draftStart)}
+                >
+                  출발지 설정
+                </button>
+              )}
+              <button
+                type="button"
+                className="map-selection-cancel-button"
+                onClick={onCancelStartSelection}
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
       {currentPosition !== null && (
         <button
           type="button"

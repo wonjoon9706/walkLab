@@ -16,6 +16,16 @@ export interface KakaoMapInstance {
   ) => void
   addControl: (control: KakaoZoomControl, position: unknown) => void
   setCenter: (position: KakaoLatLng) => void
+  setDraggable: (draggable: boolean) => void
+  getProjection: () => KakaoMapProjection
+}
+
+interface KakaoMapProjection {
+  coordsFromContainerPoint: (point: KakaoPoint) => KakaoLatLng
+}
+
+export interface KakaoMapMouseEvent {
+  latLng: KakaoLatLng
 }
 
 interface KakaoLatLngBounds {
@@ -66,6 +76,7 @@ export interface KakaoPolyline extends KakaoMapOverlay {
 
 export interface KakaoMarker extends KakaoMapOverlay {
   setPosition: (position: KakaoLatLng) => void
+  getPosition: () => KakaoLatLng
 }
 
 export interface KakaoMapsNamespace {
@@ -88,6 +99,7 @@ export interface KakaoMapsNamespace {
     map: KakaoMapInstance
     position: KakaoLatLng
     image: KakaoMarkerImage
+    draggable?: boolean
   }) => KakaoMarker
   Circle: new (options: {
     map: KakaoMapInstance
@@ -108,6 +120,18 @@ export interface KakaoMapsNamespace {
   Point: new (x: number, y: number) => KakaoPoint
   ZoomControl: new () => KakaoZoomControl
   ControlPosition: { RIGHT: unknown }
+  event: {
+    addListener: (
+      target: KakaoMapInstance | KakaoMarker,
+      eventName: 'click' | 'dragend',
+      handler: ((event: KakaoMapMouseEvent) => void) | (() => void),
+    ) => void
+    removeListener: (
+      target: KakaoMapInstance | KakaoMarker,
+      eventName: 'click' | 'dragend',
+      handler: ((event: KakaoMapMouseEvent) => void) | (() => void),
+    ) => void
+  }
   services: {
     Places: new () => KakaoPlacesService
     Status: {

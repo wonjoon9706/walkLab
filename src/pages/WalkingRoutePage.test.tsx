@@ -119,7 +119,30 @@ vi.mock('../services/routing/walkingRouteClient', () => ({
 }))
 
 vi.mock('../features/map/WalkingRouteMap', () => ({
-  WalkingRouteMap: () => <div>도보 경로 지도</div>,
+  WalkingRouteMap: ({
+    isStartSelectionEnabled,
+    onSelectStart,
+  }: {
+    isStartSelectionEnabled?: boolean
+    onSelectStart?: (coordinate: {
+      latitude: number
+      longitude: number
+    }) => void
+  }) => (
+    <div>
+      도보 경로 지도
+      {isStartSelectionEnabled && (
+        <button
+          type="button"
+          onClick={() =>
+            onSelectStart?.({ latitude: 37.55, longitude: 126.99 })
+          }
+        >
+          출발지 설정
+        </button>
+      )}
+    </div>
+  ),
 }))
 
 vi.mock('../features/places/PlaceSearchPanel', () => ({
@@ -128,15 +151,18 @@ vi.mock('../features/places/PlaceSearchPanel', () => ({
     title,
     onSelect,
     children,
+    closedActions,
   }: {
     idPrefix: string
     title: string
     onSelect: (place: PlaceSearchResult) => void
     children?: React.ReactNode
+    closedActions?: (openSearch: () => void) => React.ReactNode
   }) => (
     <section>
       <h2>{title}</h2>
       {children}
+      {closedActions?.(vi.fn())}
       {idPrefix === 'origin-place' ? (
         <>
           <button type="button" onClick={() => onSelect(manualOrigin)}>
@@ -207,6 +233,7 @@ describe('WalkingRoutePage 출발지 선택', () => {
     getCurrentLocationMock.mockResolvedValueOnce({
       coordinate: { latitude: 37.5, longitude: 127.1 },
       accuracyM: 12,
+      measuredAt: '2026-11-02T00:00:00.000Z',
     })
 
     render(
@@ -225,8 +252,14 @@ describe('WalkingRoutePage 출발지 선택', () => {
       await screen.findByText(/GPS 확인됨/),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: '내 위치 사용' }),
-    ).not.toBeInTheDocument()
+      screen.getByRole('button', { name: '현재 위치 사용' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '장소 또는 주소 검색' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '지도에서 직접 선택' }),
+    ).toBeInTheDocument()
   })
 
   it('GPS 실패 후에도 검색한 출발지로 경로를 조회한다', async () => {
@@ -256,6 +289,102 @@ describe('WalkingRoutePage 출발지 선택', () => {
     expect(screen.queryByText('기본속도 기준')).toBeNull()
   })
 
+  it('늦게 도착한 초기 GPS 응답이 검색 출발지를 덮어쓰지 않는다', async () => {
+    const deferredLocation: {
+      resolve: (value: {
+        coordinate: { latitude: number; longitude: number }
+        accuracyM: number
+        measuredAt: string
+      }) => void
+    } = { resolve: vi.fn() }
+    getCurrentLocationMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        deferredLocation.resolve = resolve
+      }),
+    )
+    render(
+      <MemoryRouter>
+        <WalkingRoutePage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+    deferredLocation.resolve({
+      coordinate: { latitude: 37.5, longitude: 127.1 },
+      accuracyM: 8,
+      measuredAt: '2026-11-02T00:00:00.000Z',
+    })
+
+    await waitFor(() => {
+      expect(getWalkingRouteMock).toHaveBeenLastCalledWith({
+        start: manualOrigin.coordinate,
+        destination: destination.coordinate,
+      })
+    })
+    expect(getWalkingRouteMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('지도에서 누른 좌표를 출발지로 사용한다', async () => {
+    getCurrentLocationMock.mockResolvedValueOnce({
+      coordinate: { latitude: 37.5, longitude: 127.1 },
+      accuracyM: 10,
+      measuredAt: '2026-11-02T00:00:00.000Z',
+    })
+    render(
+      <MemoryRouter>
+        <WalkingRoutePage />
+      </MemoryRouter>,
+    )
+    await screen.findByText(/GPS 확인됨/)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '지도에서 직접 선택' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: '출발지 설정' }))
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: '출발지 설정' }),
+      ).not.toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+
+    await waitFor(() => {
+      expect(getWalkingRouteMock).toHaveBeenLastCalledWith({
+        start: { latitude: 37.55, longitude: 126.99 },
+        destination: destination.coordinate,
+      })
+    })
+  })
+
+  it('요청 출발지와 카카오 경로 첫 점 차이가 크면 안내한다', async () => {
+    getWalkingRouteMock.mockResolvedValueOnce({
+      distanceM: 1000,
+      providerDurationSeconds: 800,
+      coordinates: [
+        {
+          latitude: manualOrigin.coordinate.latitude + 0.001,
+          longitude: manualOrigin.coordinate.longitude,
+        },
+        destination.coordinate,
+      ],
+      provider: 'kakao-walking-route',
+      requestedAt: '2026-10-30T00:00:00.000Z',
+    })
+    render(
+      <MemoryRouter>
+        <WalkingRoutePage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+
+    expect(
+      await screen.findByText(/떨어진 보행 접근점에서 시작합니다/),
+    ).toBeInTheDocument()
+  })
+
   it('GPS 확인 실패 시 내 위치 사용 동작으로 현재 위치를 다시 확인한다', async () => {
     const recoveredLocation = { latitude: 37.5, longitude: 127.1 }
     getCurrentLocationMock
@@ -263,6 +392,7 @@ describe('WalkingRoutePage 출발지 선택', () => {
       .mockResolvedValueOnce({
         coordinate: recoveredLocation,
         accuracyM: 15,
+        measuredAt: '2026-11-02T00:00:00.000Z',
       })
     render(
       <MemoryRouter>
@@ -271,7 +401,7 @@ describe('WalkingRoutePage 출발지 선택', () => {
     )
 
     expect(await screen.findByText(/현재 위치를 확인하지 못했습니다/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '내 위치 사용' }))
+    fireEvent.click(screen.getByRole('button', { name: '현재 위치 사용' }))
 
     expect(await screen.findByText(/GPS 확인됨/)).toBeInTheDocument()
   })
@@ -323,8 +453,16 @@ describe('WalkingRoutePage 출발지 선택', () => {
     const initial = { latitude: 37.5, longitude: 127.1 }
     const latest = { latitude: 37.501, longitude: 127.101 }
     getCurrentLocationMock
-      .mockResolvedValueOnce({ coordinate: initial, accuracyM: 20 })
-      .mockResolvedValueOnce({ coordinate: latest, accuracyM: 8 })
+      .mockResolvedValueOnce({
+        coordinate: initial,
+        accuracyM: 20,
+        measuredAt: '2026-11-02T00:00:00.000Z',
+      })
+      .mockResolvedValueOnce({
+        coordinate: latest,
+        accuracyM: 8,
+        measuredAt: '2026-11-02T00:00:05.000Z',
+      })
     render(
       <MemoryRouter>
         <WalkingRoutePage />

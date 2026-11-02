@@ -3,10 +3,12 @@ import { getCurrentLocation, getCurrentLocationFix } from './currentLocation'
 
 describe('현재 위치 조회', () => {
   it('브라우저 좌표를 위도·경도 객체로 변환한다', async () => {
+    const measuredAt = Date.now()
     const geolocation = {
       getCurrentPosition: vi.fn((success: PositionCallback) => {
         success({
           coords: { latitude: 37.5, longitude: 127.1 },
+          timestamp: measuredAt,
         } as GeolocationPosition)
       }),
     } as unknown as Geolocation
@@ -18,10 +20,12 @@ describe('현재 위치 조회', () => {
   })
 
   it('지도 표시용 위치에는 브라우저가 제공한 정확도를 함께 보존한다', async () => {
+    const measuredAt = Date.now()
     const geolocation = {
       getCurrentPosition: vi.fn((success: PositionCallback) => {
         success({
           coords: { latitude: 37.5, longitude: 127.1, accuracy: 18 },
+          timestamp: measuredAt,
         } as GeolocationPosition)
       }),
     } as unknown as Geolocation
@@ -29,6 +33,41 @@ describe('현재 위치 조회', () => {
     await expect(getCurrentLocationFix(geolocation)).resolves.toEqual({
       coordinate: { latitude: 37.5, longitude: 127.1 },
       accuracyM: 18,
+      measuredAt: new Date(measuredAt).toISOString(),
+    })
+  })
+
+  it('고정밀도와 캐시 금지 옵션으로 현재 위치를 요청한다', async () => {
+    const geolocation = {
+      getCurrentPosition: vi.fn((success: PositionCallback) => {
+        success({
+          coords: { latitude: 37.5, longitude: 127.1, accuracy: 10 },
+          timestamp: Date.now(),
+        } as GeolocationPosition)
+      }),
+    } as unknown as Geolocation
+
+    await getCurrentLocationFix(geolocation)
+
+    expect(geolocation.getCurrentPosition).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.any(Function),
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 },
+    )
+  })
+
+  it('15초보다 오래된 위치는 현재 위치로 사용하지 않는다', async () => {
+    const geolocation = {
+      getCurrentPosition: vi.fn((success: PositionCallback) => {
+        success({
+          coords: { latitude: 37.5, longitude: 127.1, accuracy: 10 },
+          timestamp: Date.now() - 16_000,
+        } as GeolocationPosition)
+      }),
+    } as unknown as Geolocation
+
+    await expect(getCurrentLocationFix(geolocation)).rejects.toMatchObject({
+      code: 'STALE_POSITION',
     })
   })
 

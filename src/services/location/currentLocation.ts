@@ -3,12 +3,14 @@ import type { GeoCoordinate } from '../../domain/walkingRoute'
 export interface CurrentLocationFix {
   coordinate: GeoCoordinate
   accuracyM: number | null
+  measuredAt: string
 }
 
 export type CurrentLocationErrorCode =
   | 'PERMISSION_DENIED'
   | 'POSITION_UNAVAILABLE'
   | 'TIMEOUT'
+  | 'STALE_POSITION'
   | 'UNSUPPORTED'
 
 export class CurrentLocationError extends Error {
@@ -35,15 +37,22 @@ export function getCurrentLocationFix(
     geolocation.getCurrentPosition(
       (position) => {
         const { latitude, longitude } = position.coords
+        const measuredAtMs = position.timestamp
+        const positionAgeMs = Date.now() - measuredAtMs
         if (
           !Number.isFinite(latitude) ||
           !Number.isFinite(longitude) ||
           latitude < -90 ||
           latitude > 90 ||
           longitude < -180 ||
-          longitude > 180
+          longitude > 180 ||
+          !Number.isFinite(measuredAtMs)
         ) {
           reject(new CurrentLocationError('POSITION_UNAVAILABLE'))
+          return
+        }
+        if (positionAgeMs < -5_000 || positionAgeMs > 15_000) {
+          reject(new CurrentLocationError('STALE_POSITION'))
           return
         }
         resolve({
@@ -53,6 +62,7 @@ export function getCurrentLocationFix(
             position.coords.accuracy >= 0
               ? position.coords.accuracy
               : null,
+          measuredAt: new Date(measuredAtMs).toISOString(),
         })
       },
       (error) => {
@@ -70,7 +80,7 @@ export function getCurrentLocationFix(
       {
         enableHighAccuracy: true,
         timeout: 15_000,
-        maximumAge: 30_000,
+        maximumAge: 0,
       },
     )
   })
