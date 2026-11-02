@@ -1,10 +1,17 @@
 import { createContext, useContext } from 'react'
-import type { MeasurementState } from './measurementManager'
+import type {
+  MeasurementMode,
+  MeasurementState,
+} from './measurementManager'
 
 export interface MeasurementContextValue extends MeasurementState {
   isActive: boolean
-  startMeasurement: () => Promise<void>
+  startMeasurement: (mode?: MeasurementMode) => Promise<boolean>
   stopMeasurement: () => Promise<void>
+  subscribeGps: (
+    onPosition: PositionCallback,
+    onError: PositionErrorCallback,
+  ) => () => void
 }
 
 export const MeasurementContext =

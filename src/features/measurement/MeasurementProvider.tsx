@@ -10,6 +10,7 @@ import { localMeasurementRepository } from '../../repositories/local/localMeasur
 import { createGpsCollector } from '../../services/gps/gpsCollector'
 import {
   createMeasurementManager,
+  type MeasurementMode,
   type MeasurementManager,
   type MeasurementManagerDependencies,
 } from './measurementManager'
@@ -109,11 +110,17 @@ export function MeasurementProvider({
   }, [manager])
 
   const startMeasurement = useCallback(
-    () => manager.start({ user, confirmCurrentUser }),
+    (mode?: MeasurementMode) =>
+      manager.start({ user, confirmCurrentUser, mode }),
     [confirmCurrentUser, manager, user],
   )
 
   const stopMeasurement = useCallback(() => manager.stop(), [manager])
+  const subscribeGps = useCallback(
+    (onPosition: PositionCallback, onError: PositionErrorCallback) =>
+      manager.subscribeGps(onPosition, onError),
+    [manager],
+  )
   const isActive =
     measurementState.status === 'starting' ||
     measurementState.status === 'recording'
@@ -124,8 +131,15 @@ export function MeasurementProvider({
       isActive,
       startMeasurement,
       stopMeasurement,
+      subscribeGps,
     }),
-    [isActive, measurementState, startMeasurement, stopMeasurement],
+    [
+      isActive,
+      measurementState,
+      startMeasurement,
+      stopMeasurement,
+      subscribeGps,
+    ],
   )
 
   return (

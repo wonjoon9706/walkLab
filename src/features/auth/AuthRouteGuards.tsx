@@ -14,19 +14,24 @@ function AuthLoadingPage() {
 
 export function ProtectedRoute() {
   const { status } = useAuth()
-  const { isActive } = useMeasurement()
+  const { isActive, mode } = useMeasurement()
   const location = useLocation()
 
   if (status === 'initializing') {
     return <AuthLoadingPage />
   }
 
-  if (isActive && location.pathname !== '/') {
-    return <Navigate to="/" replace />
+  const activeMeasurementPath = mode === 'navigation' ? '/walking-route' : '/'
+
+  if (isActive && location.pathname !== activeMeasurementPath) {
+    return <Navigate to={activeMeasurementPath} replace />
   }
 
   // 진행 중 인증이 만료돼도 현재 측정 화면은 로컬 저장을 계속한다.
-  if (status !== 'authenticated' && !(isActive && location.pathname === '/')) {
+  if (
+    status !== 'authenticated' &&
+    !(isActive && location.pathname === activeMeasurementPath)
+  ) {
     const requestedPath = `${location.pathname}${location.search}`
     return <Navigate to="/login" replace state={{ from: requestedPath }} />
   }
@@ -36,14 +41,19 @@ export function ProtectedRoute() {
 
 export function GuestOnlyRoute() {
   const { status } = useAuth()
-  const { isActive } = useMeasurement()
+  const { isActive, mode } = useMeasurement()
 
   if (status === 'initializing') {
     return <AuthLoadingPage />
   }
 
   if (status === 'authenticated' || isActive) {
-    return <Navigate to="/" replace />
+    return (
+      <Navigate
+        to={isActive && mode === 'navigation' ? '/walking-route' : '/'}
+        replace
+      />
+    )
   }
 
   return <Outlet />

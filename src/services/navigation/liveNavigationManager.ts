@@ -19,9 +19,19 @@ import {
 export interface LiveNavigationManager {
   getState: () => LiveNavigationState
   subscribe: (listener: (state: LiveNavigationState) => void) => () => void
-  start: (input: StartLiveNavigationInput) => void
+  start: (
+    input: StartLiveNavigationInput,
+    positionSource?: LiveNavigationPositionSource,
+  ) => boolean
   stop: () => void
   dispose: () => void
+}
+
+export interface LiveNavigationPositionSource {
+  subscribe: (
+    onPosition: PositionCallback,
+    onError: PositionErrorCallback,
+  ) => () => void
 }
 
 export interface LiveNavigationManagerDependencies {
@@ -82,6 +92,7 @@ export function createLiveNavigationManager(
 ): LiveNavigationManager {
   let state: LiveNavigationState = { ...initialState }
   let collector: GpsCollector | null = null
+  let unsubscribePositionSource: (() => void) | null = null
   let staleIntervalId: number | null = null
   let input: StartLiveNavigationInput | null = null
   let progress: RouteProgress | null = null
@@ -102,6 +113,8 @@ export function createLiveNavigationManager(
   function stopResources() {
     collector?.stop()
     collector = null
+    unsubscribePositionSource?.()
+    unsubscribePositionSource = null
     if (staleIntervalId !== null) {
       dependencies.clearInterval(staleIntervalId)
       staleIntervalId = null
@@ -371,24 +384,26 @@ export function createLiveNavigationManager(
       listener(state)
       return () => listeners.delete(listener)
     },
-    start(nextInput) {
-      if (state.isActive) return
+    start(nextInput, positionSource) {
+      if (state.isActive) return false
       if (!dependencies.getSecureContext()) {
         publish({
           status: 'error',
           message: '실시간 안내는 HTTPS 보안 연결에서만 사용할 수 있습니다.',
         })
-        return
+        return false
       }
 
-      try {
-        collector = dependencies.createCollector()
-      } catch {
-        publish({
-          status: 'error',
-          message: '이 브라우저에서는 실시간 위치 안내를 사용할 수 없습니다.',
-        })
-        return
+      if (positionSource === undefined) {
+        try {
+          collector = dependencies.createCollector()
+        } catch {
+          publish({
+            status: 'error',
+            message: '이 브라우저에서는 실시간 위치 안내를 사용할 수 없습니다.',
+          })
+          return false
+        }
       }
 
       input = nextInput
@@ -414,8 +429,16 @@ export function createLiveNavigationManager(
       listeners.forEach((listener) => listener(state))
 
       try {
-        collector.start(handlePosition, handlePositionError)
+        if (positionSource === undefined) {
+          collector!.start(handlePosition, handlePositionError)
+        } else {
+          unsubscribePositionSource = positionSource.subscribe(
+            handlePosition,
+            handlePositionError,
+          )
+        }
         staleIntervalId = dependencies.setInterval(checkStalePosition, 5_000)
+        return true
       } catch {
         stopResources()
         publish({
@@ -423,6 +446,7 @@ export function createLiveNavigationManager(
           isActive: false,
           message: 'GPS 감시를 시작하지 못했습니다. 위치 권한을 확인해 주세요.',
         })
+        return false
       }
     },
     stop() {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { StartLiveNavigationInput } from '../../domain/liveNavigation'
 import { createGpsCollector } from '../../services/gps/gpsCollector'
 import { createLiveNavigationManager } from '../../services/navigation/liveNavigationManager'
+import type { LiveNavigationPositionSource } from '../../services/navigation/liveNavigationManager'
 import { walkingRouteClient } from '../../services/routing/walkingRouteClient'
 
 export function useLiveNavigation() {
@@ -36,7 +37,14 @@ export function useLiveNavigation() {
     (input: StartLiveNavigationInput) => manager.start(input),
     [manager],
   )
+  const startWithPositionSource = useCallback(
+    (
+      input: StartLiveNavigationInput,
+      positionSource: LiveNavigationPositionSource,
+    ) => manager.start(input, positionSource),
+    [manager],
+  )
   const stop = useCallback(() => manager.stop(), [manager])
 
-  return { ...state, start, stop }
+  return { ...state, start, startWithPositionSource, stop }
 }

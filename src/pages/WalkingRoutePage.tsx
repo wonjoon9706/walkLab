@@ -12,6 +12,7 @@ import { WalkingRouteMap } from '../features/map/WalkingRouteMap'
 import { useMeasurement } from '../features/measurement/measurementContext'
 import { useLiveNavigation } from '../features/navigation/useLiveNavigation'
 import { PlaceSearchPanel } from '../features/places/PlaceSearchPanel'
+import { useSync } from '../features/sync/syncContext'
 import {
   CurrentLocationError,
   getCurrentLocation,
@@ -52,6 +53,38 @@ function getNavigationStatusLabel(status: string): string {
       return '안내 오류'
     default:
       return '안내 대기'
+  }
+}
+
+function getLocalSaveLabel(status: string): string {
+  switch (status) {
+    case 'saving':
+      return '저장 중'
+    case 'saved':
+      return '저장됨'
+    case 'failed':
+      return '저장 실패'
+    default:
+      return '대기'
+  }
+}
+
+function getSyncStatusLabel(status: string): string {
+  switch (status) {
+    case 'syncing':
+      return '서버 동기화 중'
+    case 'synced':
+      return '서버 확인 완료'
+    case 'offline':
+      return '오프라인 · 전송 대기'
+    case 'partial':
+      return '일부 전송 대기'
+    case 'auth_required':
+      return '로그인 확인 대기'
+    case 'error':
+      return '동기화 오류 · 로컬 원본 유지'
+    default:
+      return '동기화 대기'
   }
 }
 
@@ -105,9 +138,16 @@ function getRouteErrorMessage(error: unknown): string {
 
 export function WalkingRoutePage() {
   const { user } = useAuth()
-  const { isActive: measurementIsActive } = useMeasurement()
+  const measurement = useMeasurement()
+  const sync = useSync()
   const navigation = useLiveNavigation()
+  const stopMeasurementOnUnmount = measurement.stopMeasurement
+  const stopNavigationOnUnmount = navigation.stop
   const routeRequestIdRef = useRef(0)
+  const linkedMeasurementRef = useRef(false)
+  const guidanceStartingRef = useRef(false)
+  const guidanceStartCancelledRef = useRef(false)
+  const isMountedRef = useRef(true)
   const [origin, setOrigin] = useState<GeoCoordinate | null>(null)
   const [originSource, setOriginSource] =
     useState<OriginSource>('current_location')
@@ -126,6 +166,8 @@ export function WalkingRoutePage() {
     useState<LoadingStatus>('loading')
   const [guidanceStartError, setGuidanceStartError] =
     useState<string | null>(null)
+  const [isGuidanceStarting, setIsGuidanceStarting] = useState(false)
+  const [showGuidanceSaveResult, setShowGuidanceSaveResult] = useState(false)
   const displayedRoute =
     navigation.isActive && navigation.route !== null
       ? navigation.route
@@ -149,6 +191,19 @@ export function WalkingRoutePage() {
       return null
     }
   }, [displayedRoute, speedModel])
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      guidanceStartCancelledRef.current = true
+      stopNavigationOnUnmount()
+      if (linkedMeasurementRef.current) {
+        linkedMeasurementRef.current = false
+        void stopMeasurementOnUnmount()
+      }
+    }
+  }, [stopMeasurementOnUnmount, stopNavigationOnUnmount])
 
   async function requestRoute(
     start: GeoCoordinate,
@@ -245,7 +300,9 @@ export function WalkingRoutePage() {
   }, [user])
 
   function selectOrigin(place: PlaceSearchResult) {
-    if (navigation.isActive) navigation.stop()
+    if (navigation.isActive || linkedMeasurementRef.current) {
+      void stopNavigation()
+    }
     routeRequestIdRef.current += 1
     setOrigin(place.coordinate)
     setOriginSource('searched_place')
@@ -261,7 +318,9 @@ export function WalkingRoutePage() {
   }
 
   function selectDestination(place: PlaceSearchResult) {
-    if (navigation.isActive) navigation.stop()
+    if (navigation.isActive || linkedMeasurementRef.current) {
+      void stopNavigation()
+    }
     setDestination(place)
     setRoute(null)
     setRouteError(null)
@@ -276,25 +335,73 @@ export function WalkingRoutePage() {
     void requestRoute(origin, place)
   }
 
-  function startNavigation() {
+  async function startNavigation() {
+    if (guidanceStartingRef.current) return
     setGuidanceStartError(null)
+    setShowGuidanceSaveResult(false)
     if (route === null || destination === null) {
       setGuidanceStartError('도보 경로를 먼저 조회해 주세요.')
       return
     }
-    if (measurementIsActive) {
+    if (measurement.isActive) {
       setGuidanceStartError(
         'GPS 측정 중에는 길찾기 안내를 함께 시작할 수 없습니다. 측정을 먼저 종료해 주세요.',
       )
       return
     }
 
-    navigation.start({
-      route,
-      destination: destination.coordinate,
-      baselineSpeed,
-      forceInitialReroute: originSource === 'searched_place',
-    })
+    guidanceStartingRef.current = true
+    guidanceStartCancelledRef.current = false
+    setIsGuidanceStarting(true)
+    linkedMeasurementRef.current = false
+    const navigationStarted = navigation.startWithPositionSource(
+      {
+        route,
+        destination: destination.coordinate,
+        baselineSpeed,
+        forceInitialReroute: originSource === 'searched_place',
+      },
+      { subscribe: measurement.subscribeGps },
+    )
+    if (!navigationStarted) {
+      guidanceStartingRef.current = false
+      setIsGuidanceStarting(false)
+      setGuidanceStartError('실시간 안내를 준비하지 못했습니다.')
+      return
+    }
+
+    const measurementStarted = await measurement.startMeasurement('navigation')
+    if (!isMountedRef.current || guidanceStartCancelledRef.current) {
+      if (measurementStarted) {
+        await measurement.stopMeasurement()
+      }
+      guidanceStartingRef.current = false
+      if (isMountedRef.current) {
+        setIsGuidanceStarting(false)
+        setShowGuidanceSaveResult(measurementStarted)
+      }
+      return
+    }
+    guidanceStartingRef.current = false
+    setIsGuidanceStarting(false)
+    if (!measurementStarted) {
+      navigation.stop()
+      setGuidanceStartError(
+        '보행 기록 저장을 시작하지 못해 안내도 시작하지 않았습니다. 측정 상태와 로컬 저장소를 확인해 주세요.',
+      )
+      return
+    }
+    linkedMeasurementRef.current = true
+  }
+
+  async function stopNavigation() {
+    guidanceStartCancelledRef.current = true
+    navigation.stop()
+    if (!linkedMeasurementRef.current) return
+
+    linkedMeasurementRef.current = false
+    await measurement.stopMeasurement()
+    setShowGuidanceSaveResult(true)
   }
 
   return (
@@ -304,7 +411,8 @@ export function WalkingRoutePage() {
       <p className="page-description">
         현재 위치 또는 직접 선택한 출발지에서 목적지까지 실제 도보 경로를
         조회하고 개인 보행속도로 예상시간을 계산합니다. 안내를 시작하면 Safari
-        화면이 켜진 동안 현재 위치와 남은 예상시간을 갱신합니다.
+        화면이 켜진 동안 현재 위치와 남은 예상시간을 갱신하고, 같은 GPS 원본을
+        보행 기록으로 자동 저장합니다.
       </p>
 
       <PlaceSearchPanel
@@ -389,11 +497,15 @@ export function WalkingRoutePage() {
           {route !== null && (
             <div className="button-row navigation-controls">
               {!navigation.isActive ? (
-                <button type="button" onClick={startNavigation}>
-                  안내 시작
+                <button
+                  type="button"
+                  disabled={isGuidanceStarting}
+                  onClick={() => void startNavigation()}
+                >
+                  {isGuidanceStarting ? '안내 준비 중' : '안내 시작'}
                 </button>
               ) : (
-                <button type="button" onClick={navigation.stop}>
+                <button type="button" onClick={() => void stopNavigation()}>
                   안내 종료
                 </button>
               )}
@@ -485,8 +597,44 @@ export function WalkingRoutePage() {
             <p className="page-description">{navigation.message}</p>
           )}
           <p className="page-description">
-            안내 위치는 측정 기록으로 저장되지 않습니다. 화면 잠금, Safari 종료,
-            백그라운드 상태에서는 GPS 갱신을 보장하지 않습니다.
+            화면 잠금, Safari 종료, 백그라운드 상태에서는 GPS 갱신을 보장하지
+            않습니다.
+          </p>
+          <p
+            className={`auth-message ${
+              measurement.localSaveStatus === 'failed'
+                ? 'error-message'
+                : 'success-message'
+            }`}
+            role="status"
+          >
+            보행 기록 자동 저장 중 · 로컬{' '}
+            {getLocalSaveLabel(measurement.localSaveStatus)} · 저장 지점{' '}
+            {measurement.savedPointCount}개
+          </p>
+          <p className="page-description">
+            {getSyncStatusLabel(sync.status)} · 전송 대기 {sync.pendingCount}건
+          </p>
+        </section>
+      )}
+
+      {showGuidanceSaveResult && (
+        <section className="status-card" aria-labelledby="guidance-save-title">
+          <h2 id="guidance-save-title">안내 기록 저장 결과</h2>
+          <p
+            className={`auth-message ${
+              measurement.localSaveStatus === 'failed'
+                ? 'error-message'
+                : 'success-message'
+            }`}
+            role="status"
+          >
+            로컬 {getLocalSaveLabel(measurement.localSaveStatus)} · GPS 지점{' '}
+            {measurement.savedPointCount}개
+          </p>
+          <p className="page-description">
+            {getSyncStatusLabel(sync.status)} · 전송 대기 {sync.pendingCount}건 ·
+            서버 확인 {sync.confirmedCount}건
           </p>
         </section>
       )}

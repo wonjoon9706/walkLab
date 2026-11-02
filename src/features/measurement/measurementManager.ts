@@ -17,9 +17,11 @@ export type MeasurementUiStatus =
 
 export type GpsUiStatus = 'idle' | 'waiting' | 'receiving' | 'error' | 'stopped'
 export type LocalSaveStatus = 'idle' | 'saving' | 'saved' | 'failed'
+export type MeasurementMode = 'manual' | 'navigation'
 
 export interface MeasurementState {
   status: MeasurementUiStatus
+  mode: MeasurementMode | null
   sessionId: string | null
   ownerUserId: string | null
   startedAt: string | null
@@ -39,13 +41,18 @@ export interface MeasurementState {
 export interface StartMeasurementInput {
   user: AuthenticatedUser | null
   confirmCurrentUser: () => Promise<AuthenticatedUser | null>
+  mode?: MeasurementMode
 }
 
 export interface MeasurementManager {
   getState: () => MeasurementState
   subscribe: (listener: (state: MeasurementState) => void) => () => void
-  start: (input: StartMeasurementInput) => Promise<void>
+  start: (input: StartMeasurementInput) => Promise<boolean>
   stop: () => Promise<void>
+  subscribeGps: (
+    onPosition: PositionCallback,
+    onError: PositionErrorCallback,
+  ) => () => void
   recover: (ownerUserId: string) => Promise<void>
   updateNetworkStatus: (online: boolean) => void
   recordVisibility: (visible: boolean) => void
@@ -66,6 +73,7 @@ export interface MeasurementManagerDependencies {
 
 const initialState: MeasurementState = {
   status: 'idle',
+  mode: null,
   sessionId: null,
   ownerUserId: null,
   startedAt: null,
@@ -148,8 +156,13 @@ export function createMeasurementManager(
   let collector: GpsCollector | null = null
   let sequenceNo = 0
   let firstPointStored = false
+  let stopInProgress = false
   let saveQueue: Promise<void> = Promise.resolve()
   const listeners = new Set<(nextState: MeasurementState) => void>()
+  const gpsSubscribers = new Set<{
+    onPosition: PositionCallback
+    onError: PositionErrorCallback
+  }>()
 
   function publish(partialState: Partial<MeasurementState>) {
     state = { ...state, ...partialState }
@@ -218,6 +231,15 @@ export function createMeasurementManager(
       return
     }
 
+    // 같은 원본 관측값을 저장과 실시간 안내가 공유하되, 안내 오류가 저장을 막지 않게 한다.
+    gpsSubscribers.forEach((subscriber) => {
+      try {
+        subscriber.onPosition(position)
+      } catch {
+        // 구독 기능의 오류는 GPS 원본 저장 파이프라인과 분리한다.
+      }
+    })
+
     const receivedAt = toIsoString(dependencies.now())
     sequenceNo += 1
     const point = createPoint(
@@ -274,6 +296,14 @@ export function createMeasurementManager(
       return
     }
 
+    gpsSubscribers.forEach((subscriber) => {
+      try {
+        subscriber.onError(error)
+      } catch {
+        // 구독 기능의 오류가 측정 오류 이벤트 저장을 막지 않게 한다.
+      }
+    })
+
     const errorInfo = getPositionErrorType(error)
     const occurredAt = toIsoString(dependencies.now())
 
@@ -303,7 +333,7 @@ export function createMeasurementManager(
           'error',
         ),
       )
-      publish({ status: 'error' })
+      publish({ status: 'error', mode: null })
     }
   }
 
@@ -318,10 +348,16 @@ export function createMeasurementManager(
       return () => listeners.delete(listener)
     },
 
+    subscribeGps(onPosition, onError) {
+      const subscriber = { onPosition, onError }
+      gpsSubscribers.add(subscriber)
+      return () => gpsSubscribers.delete(subscriber)
+    },
+
     async start(input) {
       if (isActive()) {
         publish({ message: '이미 측정 중입니다.' })
-        return
+        return false
       }
 
       if (!dependencies.getOnline()) {
@@ -329,17 +365,17 @@ export function createMeasurementManager(
           networkOnline: false,
           message: '새 측정을 시작하려면 인터넷 연결이 필요합니다.',
         })
-        return
+        return false
       }
 
       if (!dependencies.getSecureContext()) {
         publish({ message: 'GPS 측정은 HTTPS 보안 연결에서만 사용할 수 있습니다.' })
-        return
+        return false
       }
 
       if (input.user === null) {
         publish({ message: '로그인 상태를 다시 확인해 주세요.' })
-        return
+        return false
       }
 
       let confirmedUser: AuthenticatedUser | null
@@ -348,16 +384,17 @@ export function createMeasurementManager(
         confirmedUser = await input.confirmCurrentUser()
       } catch {
         publish({ message: '로그인 확인 중 네트워크 오류가 발생했습니다.' })
-        return
+        return false
       }
 
       if (confirmedUser === null || confirmedUser.id !== input.user.id) {
         publish({ message: '로그인 확인에 실패했습니다. 다시 로그인해 주세요.' })
-        return
+        return false
       }
 
       const sessionId = dependencies.createId()
       const startedAt = toIsoString(dependencies.now())
+      const mode = input.mode ?? 'manual'
       let nextCollector: GpsCollector
 
       try {
@@ -365,11 +402,12 @@ export function createMeasurementManager(
         nextCollector = dependencies.createCollector()
       } catch {
         publish({ message: '이 브라우저에서는 위치 측정 기능을 사용할 수 없습니다.' })
-        return
+        return false
       }
 
       publish({
         status: 'starting',
+        mode,
         sessionId,
         ownerUserId: confirmedUser.id,
         startedAt,
@@ -406,69 +444,79 @@ export function createMeasurementManager(
           'recording',
         )
         publish({ status: 'recording', localSaveStatus: 'saved' })
+        return true
       } catch {
         collector?.stop()
         collector = null
         publish({
           status: 'error',
+          mode: null,
           gpsStatus: 'error',
           localSaveStatus: 'failed',
           message: '측정을 시작하지 못했습니다. 로컬 저장소와 위치 권한을 확인해 주세요.',
         })
+        return false
       }
     },
 
     async stop() {
       const activeSession = requireActiveSession()
 
-      if (activeSession === null || !isActive()) {
+      if (activeSession === null || !isActive() || stopInProgress) {
         return
       }
 
+      stopInProgress = true
       collector?.stop()
       collector = null
-      await saveQueue
-
-      const endedAt = toIsoString(dependencies.now())
-      let stoppedEventSaved = true
-
       try {
-        await dependencies.repository.saveEvent({
-          id: dependencies.createId(),
-          sessionId: activeSession.sessionId,
-          ownerUserId: activeSession.ownerUserId,
-          eventType: 'measurement_stopped',
-          occurredAt: endedAt,
-          receivedAt: endedAt,
-        })
-      } catch {
-        stoppedEventSaved = false
-      }
+        await saveQueue
 
-      try {
-        await dependencies.repository.setSessionStatus(
-          activeSession.ownerUserId,
-          activeSession.sessionId,
-          'completed',
-          endedAt,
-        )
-        publish({
-          status: 'completed',
-          endedAt,
-          gpsStatus: 'stopped',
-          localSaveStatus: stoppedEventSaved ? 'saved' : 'failed',
-          message: stoppedEventSaved
-            ? '측정이 종료되고 로컬에 저장되었습니다.'
-            : '측정은 종료됐지만 종료 이벤트 저장에 실패했습니다.',
-        })
-        dependencies.onMeasurementStopped?.()
-      } catch {
-        publish({
-          status: 'error',
-          gpsStatus: 'stopped',
-          localSaveStatus: 'failed',
-          message: 'GPS는 중지했지만 측정 종료 상태를 저장하지 못했습니다.',
-        })
+        const endedAt = toIsoString(dependencies.now())
+        let stoppedEventSaved = true
+
+        try {
+          await dependencies.repository.saveEvent({
+            id: dependencies.createId(),
+            sessionId: activeSession.sessionId,
+            ownerUserId: activeSession.ownerUserId,
+            eventType: 'measurement_stopped',
+            occurredAt: endedAt,
+            receivedAt: endedAt,
+          })
+        } catch {
+          stoppedEventSaved = false
+        }
+
+        try {
+          await dependencies.repository.setSessionStatus(
+            activeSession.ownerUserId,
+            activeSession.sessionId,
+            'completed',
+            endedAt,
+          )
+          publish({
+            status: 'completed',
+            mode: null,
+            endedAt,
+            gpsStatus: 'stopped',
+            localSaveStatus: stoppedEventSaved ? 'saved' : 'failed',
+            message: stoppedEventSaved
+              ? '측정이 종료되고 로컬에 저장되었습니다.'
+              : '측정은 종료됐지만 종료 이벤트 저장에 실패했습니다.',
+          })
+          dependencies.onMeasurementStopped?.()
+        } catch {
+          publish({
+            status: 'error',
+            mode: null,
+            gpsStatus: 'stopped',
+            localSaveStatus: 'failed',
+            message: 'GPS는 중지했지만 측정 종료 상태를 저장하지 못했습니다.',
+          })
+        }
+      } finally {
+        stopInProgress = false
       }
     },
 
@@ -484,6 +532,7 @@ export function createMeasurementManager(
       if (recoveredCount > 0) {
         publish({
           status: 'interrupted',
+          mode: null,
           gpsStatus: 'stopped',
           message: `이전에 끝나지 않은 측정 ${recoveredCount}건을 중단 상태로 복구했습니다. GPS는 자동 재시작하지 않았습니다.`,
         })
@@ -517,6 +566,11 @@ export function createMeasurementManager(
     dispose() {
       collector?.stop()
       collector = null
+      gpsSubscribers.clear()
+
+      if (stopInProgress) {
+        return
+      }
 
       const activeSession = requireActiveSession()
       if (activeSession === null || !isActive()) {

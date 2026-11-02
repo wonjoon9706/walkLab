@@ -35,6 +35,7 @@ const idleSync: SyncContextValue = {
 
 const idleMeasurement: MeasurementContextValue = {
   status: 'idle',
+  mode: null,
   sessionId: null,
   ownerUserId: null,
   startedAt: null,
@@ -52,6 +53,7 @@ const idleMeasurement: MeasurementContextValue = {
   isActive: false,
   startMeasurement: vi.fn(),
   stopMeasurement: vi.fn(),
+  subscribeGps: vi.fn(),
 }
 
 function renderRoute(
@@ -186,6 +188,7 @@ describe('인증 라우팅', () => {
     const activeMeasurement: MeasurementContextValue = {
       ...idleMeasurement,
       status: 'recording',
+      mode: 'manual',
       isActive: true,
       sessionId: 'session-1',
       ownerUserId: testUser.id,
@@ -214,6 +217,7 @@ describe('인증 라우팅', () => {
     const activeMeasurement: MeasurementContextValue = {
       ...idleMeasurement,
       status: 'recording',
+      mode: 'manual',
       isActive: true,
       sessionId: 'session-1',
       ownerUserId: testUser.id,
@@ -238,6 +242,60 @@ describe('인증 라우팅', () => {
 
     expect(
       await screen.findByText('세션 ID: test-session'),
+    ).toBeInTheDocument()
+  })
+
+  it('manual 측정 중 walking-route 접근은 기존처럼 측정 홈으로 이동한다', async () => {
+    const service = createFakeAuthService({
+      getCurrentUser: vi.fn().mockResolvedValue(testUser),
+    })
+    const activeMeasurement: MeasurementContextValue = {
+      ...idleMeasurement,
+      status: 'recording',
+      mode: 'manual',
+      isActive: true,
+    }
+
+    renderRoute('/walking-route', service, activeMeasurement)
+
+    expect(
+      await screen.findByRole('heading', { name: '측정 홈' }),
+    ).toBeInTheDocument()
+  })
+
+  it('navigation 측정 중에는 walking-route 화면을 유지한다', async () => {
+    const service = createFakeAuthService({
+      getCurrentUser: vi.fn().mockResolvedValue(testUser),
+    })
+    const activeMeasurement: MeasurementContextValue = {
+      ...idleMeasurement,
+      status: 'starting',
+      mode: 'navigation',
+      isActive: true,
+    }
+
+    renderRoute('/walking-route', service, activeMeasurement)
+
+    expect(
+      await screen.findByRole('heading', { name: '도보 길찾기' }),
+    ).toBeInTheDocument()
+  })
+
+  it('navigation 측정 중 다른 보호 경로는 walking-route로 돌아온다', async () => {
+    const service = createFakeAuthService({
+      getCurrentUser: vi.fn().mockResolvedValue(testUser),
+    })
+    const activeMeasurement: MeasurementContextValue = {
+      ...idleMeasurement,
+      status: 'recording',
+      mode: 'navigation',
+      isActive: true,
+    }
+
+    renderRoute('/history', service, activeMeasurement)
+
+    expect(
+      await screen.findByRole('heading', { name: '도보 길찾기' }),
     ).toBeInTheDocument()
   })
 })

@@ -117,6 +117,29 @@ describe('실시간 안내 관리자', () => {
     expect(test.manager.getState().isActive).toBe(false)
   })
 
+  it('외부 측정 GPS를 사용하면 별도 collector를 시작하지 않는다', () => {
+    const test = setup()
+    const unsubscribe = vi.fn()
+    const subscribe = vi.fn().mockReturnValue(unsubscribe)
+
+    const started = test.manager.start(
+      {
+        route,
+        destination: route.coordinates.at(-1)!,
+        baselineSpeed,
+        forceInitialReroute: false,
+      },
+      { subscribe },
+    )
+
+    expect(started).toBe(true)
+    expect(subscribe).toHaveBeenCalledOnce()
+    expect(test.collector.start).not.toHaveBeenCalled()
+
+    test.manager.stop()
+    expect(unsubscribe).toHaveBeenCalledOnce()
+  })
+
   it('정확도가 낮은 GPS는 진행도 계산에서 제외한다', () => {
     const test = setup()
     test.start()

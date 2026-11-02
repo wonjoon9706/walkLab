@@ -133,7 +133,7 @@ function createPositionError(code: number): GeolocationPositionError {
 async function startManager(
   manager: ReturnType<typeof createMeasurementManager>,
 ) {
-  await manager.start({
+  return manager.start({
     user: testUser,
     confirmCurrentUser: vi.fn().mockResolvedValue(testUser),
   })
@@ -150,6 +150,7 @@ describe('MeasurementManager', () => {
     expect(test.repository.createSession).toHaveBeenCalledOnce()
     expect(test.collector.start).toHaveBeenCalledOnce()
     expect(test.manager.getState().status).toBe('recording')
+    expect(test.manager.getState().mode).toBe('manual')
   })
 
   it('오프라인이면 session과 watcher를 만들지 않는다', async () => {
@@ -188,12 +189,69 @@ describe('MeasurementManager', () => {
     expect(test.collector.stop).toHaveBeenCalledOnce()
     expect(test.manager.getState()).toMatchObject({
       status: 'completed',
+      mode: null,
       savedPointCount: 2,
       firstSavedSequenceNo: 1,
       lastSavedSequenceNo: 2,
       nullOptionalFieldCount: 8,
       gpsStatus: 'stopped',
     })
+  })
+
+  it('저장 watcher의 같은 GPS 관측값을 안내 구독자에게 한 번만 전달한다', async () => {
+    const test = createTestManager()
+    const onPosition = vi.fn()
+    const unsubscribe = test.manager.subscribeGps(onPosition, vi.fn())
+    await startManager(test.manager)
+    const position = createPosition(Date.parse('2026-10-29T00:00:00.000Z'))
+
+    test.emitPosition(position)
+    await test.manager.stop()
+
+    expect(test.collector.start).toHaveBeenCalledOnce()
+    expect(onPosition).toHaveBeenCalledOnce()
+    expect(onPosition).toHaveBeenCalledWith(position)
+    expect(test.repository.savePoint).toHaveBeenCalledOnce()
+    unsubscribe()
+  })
+
+  it('세션 생성이 실패하면 watcher를 시작하지 않고 실패를 반환한다', async () => {
+    const repository = createFakeRepository({
+      createSession: vi.fn().mockRejectedValue(new Error('IndexedDB failure')),
+    })
+    const test = createTestManager(repository)
+
+    const started = await startManager(test.manager)
+
+    expect(started).toBe(false)
+    expect(test.collector.start).not.toHaveBeenCalled()
+    expect(test.manager.getState()).toMatchObject({
+      status: 'error',
+      mode: null,
+      localSaveStatus: 'failed',
+    })
+  })
+
+  it('navigation 모드를 starting 상태와 함께 적용하고 종료 시 정리한다', async () => {
+    const test = createTestManager()
+    const states: Array<{ status: string; mode: string | null }> = []
+    test.manager.subscribe((state) => {
+      states.push({ status: state.status, mode: state.mode })
+    })
+
+    const started = await test.manager.start({
+      user: testUser,
+      confirmCurrentUser: vi.fn().mockResolvedValue(testUser),
+      mode: 'navigation',
+    })
+
+    expect(started).toBe(true)
+    expect(states).toContainEqual({ status: 'starting', mode: 'navigation' })
+    expect(states).not.toContainEqual({ status: 'starting', mode: null })
+    expect(test.manager.getState().mode).toBe('navigation')
+
+    await test.manager.stop()
+    expect(test.manager.getState().mode).toBeNull()
   })
 
   it.each([
@@ -235,6 +293,26 @@ describe('MeasurementManager', () => {
     expect(savePoint).toHaveBeenCalledTimes(2)
     expect(test.manager.getState().savedPointCount).toBe(1)
     expect(test.manager.getState().failedSaveCount).toBe(1)
+  })
+
+  it('연속 종료 요청에도 같은 세션을 한 번만 종료한다', async () => {
+    const test = createTestManager()
+    await startManager(test.manager)
+    test.emitPosition(createPosition(1))
+
+    await Promise.all([test.manager.stop(), test.manager.stop()])
+
+    expect(test.collector.stop).toHaveBeenCalledOnce()
+    expect(test.repository.setSessionStatus).toHaveBeenCalledWith(
+      'user-a',
+      expect.any(String),
+      'completed',
+      expect.any(String),
+    )
+    const stoppedEvents = vi
+      .mocked(test.repository.saveEvent)
+      .mock.calls.filter(([event]) => event.eventType === 'measurement_stopped')
+    expect(stoppedEvents).toHaveLength(1)
   })
 
   it('이전 recording 세션을 interrupted로 복구해도 watcher를 자동 시작하지 않는다', async () => {
