@@ -76,8 +76,9 @@ function renderRoute(
 
 describe('인증 라우팅', () => {
   it.each([
-    ['/', '측정 홈'],
-    ['/history', '기록 목록'],
+    ['/', '도보 길찾기'],
+    ['/history', '내 보행 기록'],
+    ['/history/summary', '나의 보행 분석'],
     ['/walking-route', '도보 길찾기'],
     ['/sessions/test-session', '기록 상세'],
   ])('로그인 사용자는 %s 경로에서 %s 화면을 본다', async (path, heading) => {
@@ -87,8 +88,66 @@ describe('인증 라우팅', () => {
     renderRoute(path, service)
 
     expect(
-      await screen.findByRole('heading', { level: 1, name: heading }),
+      await screen.findByRole(
+        'heading',
+        { level: 1, name: heading },
+        { timeout: 3_000 },
+      ),
     ).toBeInTheDocument()
+  })
+
+  it('일반 사용자 주요 메뉴는 길찾기와 내 보행 기록 두 개만 표시한다', async () => {
+    const service = createFakeAuthService({
+      getCurrentUser: vi.fn().mockResolvedValue(testUser),
+    })
+    renderRoute('/walking-route', service)
+
+    const navigation = await screen.findByRole('navigation', {
+      name: '주요 메뉴',
+    })
+    expect(navigation.querySelectorAll('a, span')).toHaveLength(2)
+    expect(navigation).toHaveTextContent('도보 길찾기')
+    expect(navigation).toHaveTextContent('내 보행 기록')
+    expect(navigation).not.toHaveTextContent('측정 홈')
+  })
+
+  it('로그인 사용자는 설정 메뉴와 직접 주소에서 개발자 도구에 접근한다', async () => {
+    const service = createFakeAuthService({
+      getCurrentUser: vi.fn().mockResolvedValue(testUser),
+    })
+    renderRoute('/developer-tools', service)
+
+    expect(
+      await screen.findByRole('heading', { name: '측정 홈' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '개발자 도구' })).toHaveAttribute(
+      'href',
+      '/developer-tools',
+    )
+  })
+
+  it('수동 측정 시작 상태에서는 개발자 도구에서 기존 / 측정 화면으로 안전하게 이동한다', async () => {
+    const service = createFakeAuthService({
+      getCurrentUser: vi.fn().mockResolvedValue(testUser),
+    })
+    const startingMeasurement: MeasurementContextValue = {
+      ...idleMeasurement,
+      status: 'starting',
+      mode: 'manual',
+      isActive: true,
+      sessionId: 'manual-session',
+      ownerUserId: testUser.id,
+      startedAt: '2026-11-02T00:00:00.000Z',
+      gpsStatus: 'waiting',
+      stopMeasurement: vi.fn(),
+    }
+
+    renderRoute('/developer-tools', service, startingMeasurement)
+
+    expect(
+      await screen.findByRole('heading', { name: '측정 홈' }),
+    ).toBeInTheDocument()
+    expect(startingMeasurement.stopMeasurement).not.toHaveBeenCalled()
   })
 
   it('비로그인 사용자가 보호 경로를 열면 로그인으로 이동한다', async () => {
@@ -98,7 +157,7 @@ describe('인증 라우팅', () => {
     expect(
       await screen.findByRole('heading', { name: '이메일 OTP 로그인' }),
     ).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '기록 목록' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '내 보행 기록' })).toBeNull()
   })
 
   it('로그인 상태 확인 중에는 보호 화면을 먼저 표시하지 않는다', () => {
@@ -127,7 +186,7 @@ describe('인증 라우팅', () => {
     renderRoute('/login', service)
 
     expect(
-      await screen.findByRole('heading', { name: '측정 홈' }),
+      await screen.findByRole('heading', { name: '도보 길찾기' }),
     ).toBeInTheDocument()
   })
 
@@ -159,7 +218,7 @@ describe('인증 라우팅', () => {
       }),
     })
     renderRoute('/', service)
-    await screen.findByRole('heading', { name: '측정 홈' })
+    await screen.findByRole('heading', { name: '도보 길찾기' })
 
     act(() => {
       authChangeListener?.({
@@ -230,19 +289,20 @@ describe('인증 라우팅', () => {
 
     expect(service.signOut).not.toHaveBeenCalled()
     expect(
-      screen.getByText('측정 종료 버튼을 누른 뒤 로그아웃해 주세요.'),
+      screen.getByText('안내 또는 측정을 종료한 뒤 로그아웃할 수 있습니다.'),
     ).toBeInTheDocument()
   })
 
-  it('상세 경로의 세션 ID를 표시한다', async () => {
+  it('상세 경로의 세션 ID를 기본 화면에 노출하지 않는다', async () => {
     const service = createFakeAuthService({
       getCurrentUser: vi.fn().mockResolvedValue(testUser),
     })
     renderRoute('/sessions/test-session', service)
 
     expect(
-      await screen.findByText('세션 ID: test-session'),
+      await screen.findByRole('heading', { name: '기록 상세' }),
     ).toBeInTheDocument()
+    expect(screen.queryByText('세션 ID: test-session')).toBeNull()
   })
 
   it('manual 측정 중 walking-route 접근은 기존처럼 측정 홈으로 이동한다', async () => {

@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from './authContext'
 import { useMeasurement } from '../measurement/measurementContext'
+import { AppNavigation } from '../navigation/AppNavigation'
 
 function AuthLoadingPage() {
   return (
@@ -36,7 +37,11 @@ export function ProtectedRoute() {
     return <Navigate to="/login" replace state={{ from: requestedPath }} />
   }
 
-  return <Outlet />
+  return (
+    <AppNavigation>
+      <Outlet />
+    </AppNavigation>
+  )
 }
 
 export function GuestOnlyRoute() {

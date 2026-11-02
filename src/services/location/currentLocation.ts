@@ -1,5 +1,10 @@
 import type { GeoCoordinate } from '../../domain/walkingRoute'
 
+export interface CurrentLocationFix {
+  coordinate: GeoCoordinate
+  accuracyM: number | null
+}
+
 export type CurrentLocationErrorCode =
   | 'PERMISSION_DENIED'
   | 'POSITION_UNAVAILABLE'
@@ -16,6 +21,12 @@ export class CurrentLocationError extends Error {
 export function getCurrentLocation(
   geolocation: Geolocation | undefined = navigator.geolocation,
 ): Promise<GeoCoordinate> {
+  return getCurrentLocationFix(geolocation).then((fix) => fix.coordinate)
+}
+
+export function getCurrentLocationFix(
+  geolocation: Geolocation | undefined = navigator.geolocation,
+): Promise<CurrentLocationFix> {
   if (geolocation === undefined) {
     return Promise.reject(new CurrentLocationError('UNSUPPORTED'))
   }
@@ -35,7 +46,14 @@ export function getCurrentLocation(
           reject(new CurrentLocationError('POSITION_UNAVAILABLE'))
           return
         }
-        resolve({ latitude, longitude })
+        resolve({
+          coordinate: { latitude, longitude },
+          accuracyM:
+            Number.isFinite(position.coords.accuracy) &&
+            position.coords.accuracy >= 0
+              ? position.coords.accuracy
+              : null,
+        })
       },
       (error) => {
         const codeByPositionError: Record<number, CurrentLocationErrorCode> = {

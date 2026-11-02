@@ -9,11 +9,69 @@ const koreanDateTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
   hour12: false,
 })
 
+const koreanTimeFormatter = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+})
+
+const koreanDatePartsFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Seoul',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+})
+
+function getKoreanCalendarDay(date: Date) {
+  const parts = koreanDatePartsFormatter.formatToParts(date)
+  const valueByType = new Map(parts.map((part) => [part.type, part.value]))
+  return {
+    year: Number(valueByType.get('year')),
+    month: Number(valueByType.get('month')),
+    day: Number(valueByType.get('day')),
+  }
+}
+
 export function formatKoreanDateTime(isoDateTime: string): string {
   const date = new Date(isoDateTime)
   return Number.isNaN(date.getTime())
     ? '시간 정보 없음'
     : koreanDateTimeFormatter.format(date)
+}
+
+export function formatKoreanArrivalTime(
+  isoDateTime: string,
+  referenceDate: Date = new Date(),
+): string {
+  const arrivalDate = new Date(isoDateTime)
+  if (
+    Number.isNaN(arrivalDate.getTime()) ||
+    Number.isNaN(referenceDate.getTime())
+  ) {
+    return '시간 정보 없음'
+  }
+
+  const arrivalDay = getKoreanCalendarDay(arrivalDate)
+  const referenceDay = getKoreanCalendarDay(referenceDate)
+  const arrivalDayNumber = Date.UTC(
+    arrivalDay.year,
+    arrivalDay.month - 1,
+    arrivalDay.day,
+  )
+  const referenceDayNumber = Date.UTC(
+    referenceDay.year,
+    referenceDay.month - 1,
+    referenceDay.day,
+  )
+  const dayDifference = Math.round(
+    (arrivalDayNumber - referenceDayNumber) / (24 * 60 * 60 * 1000),
+  )
+  const time = koreanTimeFormatter.format(arrivalDate)
+
+  if (dayDifference === 0) return time
+  if (dayDifference === 1) return `내일 ${time}`
+  return `${arrivalDay.month}월 ${arrivalDay.day}일 ${time}`
 }
 
 export function formatDuration(totalSeconds: number | null): string {

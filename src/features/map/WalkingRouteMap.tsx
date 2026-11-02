@@ -10,10 +10,11 @@ import {
 } from './kakaoMapSdk'
 
 interface WalkingRouteMapProps {
-  coordinates: GeoCoordinate[]
+  coordinates?: GeoCoordinate[]
   start: GeoCoordinate
-  destination: GeoCoordinate
+  destination?: GeoCoordinate | null
   currentPosition?: GeoCoordinate | null
+  currentAccuracyM?: number | null
   remainingCoordinates?: GeoCoordinate[]
 }
 
@@ -21,6 +22,8 @@ interface MapRuntime {
   map: KakaoMapInstance
   maps: KakaoMapsNamespace
 }
+
+const EMPTY_COORDINATES: GeoCoordinate[] = []
 
 function toKakaoPosition(
   maps: KakaoMapsNamespace,
@@ -42,11 +45,21 @@ function createMarkerImage(
   })
 }
 
+function createCurrentLocationImage(maps: KakaoMapsNamespace) {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="white" fill-opacity="0.95"/><circle cx="12" cy="12" r="7" fill="#2563eb"/></svg>'
+  const source = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+  return new maps.MarkerImage(source, new maps.Size(24, 24), {
+    offset: new maps.Point(12, 12),
+    alt: '현재 GPS 위치',
+  })
+}
+
 export function WalkingRouteMap({
-  coordinates,
+  coordinates = EMPTY_COORDINATES,
   start,
-  destination,
+  destination = null,
   currentPosition = null,
+  currentAccuracyM = null,
   remainingCoordinates,
 }: WalkingRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -65,8 +78,7 @@ export function WalkingRouteMap({
     const container = containerRef.current
     if (
       container === null ||
-      javaScriptKey === null ||
-      stableCoordinates.length < 2
+      javaScriptKey === null
     ) {
       return
     }
@@ -82,16 +94,18 @@ export function WalkingRouteMap({
         const path = stableCoordinates.map((coordinate) =>
           toKakaoPosition(maps, coordinate),
         )
-        const startPosition = toKakaoPosition(maps, start)
-        const destinationPosition = toKakaoPosition(maps, destination)
+        const initialCenter = toKakaoPosition(
+          maps,
+          start,
+        )
         const map = new maps.Map(container, {
-          center: startPosition,
+          center: initialCenter,
           level: 4,
         })
         map.addControl(new maps.ZoomControl(), maps.ControlPosition.RIGHT)
 
-        overlays.push(
-          new maps.Polyline({
+        if (path.length >= 2) {
+          overlays.push(new maps.Polyline({
             map,
             path,
             strokeWeight: 6,
@@ -99,24 +113,28 @@ export function WalkingRouteMap({
               isLiveMode ? '#9aa7ad' : '#176b87',
             strokeOpacity:
               isLiveMode ? 0.55 : 0.95,
-          }),
-          new maps.Marker({
+          }))
+        }
+        overlays.push(new maps.Marker({
             map,
-            position: startPosition,
+            position: toKakaoPosition(maps, start),
             image: createMarkerImage(maps, '#2a8c58', '도보 경로 출발지'),
-          }),
-          new maps.Marker({
+          }))
+        if (destination !== null) {
+          overlays.push(new maps.Marker({
             map,
-            position: destinationPosition,
+            position: toKakaoPosition(maps, destination),
             image: createMarkerImage(maps, '#c54242', '도보 경로 목적지'),
-          }),
-        )
+          }))
+        }
 
-        const bounds = new maps.LatLngBounds()
-        path.forEach((position) => bounds.extend(position))
-        bounds.extend(startPosition)
-        bounds.extend(destinationPosition)
-        map.setBounds(bounds, 40, 40, 40, 40)
+        if (path.length >= 2 && destination !== null) {
+          const bounds = new maps.LatLngBounds()
+          path.forEach((position) => bounds.extend(position))
+          bounds.extend(toKakaoPosition(maps, start))
+          bounds.extend(toKakaoPosition(maps, destination))
+          map.setBounds(bounds, 40, 40, 40, 40)
+        }
         runtimeRef.current = { map, maps }
         setMapReadyVersion((version) => version + 1)
       })
@@ -163,27 +181,42 @@ export function WalkingRouteMap({
         }),
       )
     }
-    if (currentPosition !== null) {
-      liveOverlays.push(
-        new runtime.maps.Marker({
-          map: runtime.map,
-          position: toKakaoPosition(runtime.maps, currentPosition),
-          image: createMarkerImage(
-            runtime.maps,
-            '#2563eb',
-            '실시간 현재 위치',
-          ),
-        }),
-      )
-    }
-
     return () => liveOverlays.forEach((overlay) => overlay.setMap(null))
   }, [
-    currentPosition,
     isLiveMode,
     mapReadyVersion,
     stableRemainingCoordinates,
   ])
+
+  useEffect(() => {
+    const runtime = runtimeRef.current
+    if (runtime === null || currentPosition === null) return
+
+    const position = toKakaoPosition(runtime.maps, currentPosition)
+    const currentOverlays: KakaoMapOverlay[] = [
+      new runtime.maps.Marker({
+        map: runtime.map,
+        position,
+        image: createCurrentLocationImage(runtime.maps),
+      }),
+    ]
+    if (currentAccuracyM !== null && currentAccuracyM > 0) {
+      currentOverlays.unshift(
+        new runtime.maps.Circle({
+          map: runtime.map,
+          center: position,
+          radius: currentAccuracyM,
+          strokeWeight: 1,
+          strokeColor: '#2563eb',
+          strokeOpacity: 0.45,
+          fillColor: '#60a5fa',
+          fillOpacity: 0.12,
+        }),
+      )
+    }
+
+    return () => currentOverlays.forEach((overlay) => overlay.setMap(null))
+  }, [currentAccuracyM, currentPosition, mapReadyVersion])
 
   if (javaScriptKey === null) {
     return (
@@ -200,15 +233,33 @@ export function WalkingRouteMap({
         className="route-map"
         aria-label="출발지에서 목적지까지의 도보 경로 지도"
       />
+      {currentPosition !== null && (
+        <button
+          type="button"
+          className="map-location-button secondary-button"
+          onClick={() => {
+            const runtime = runtimeRef.current
+            if (runtime !== null) {
+              runtime.map.setCenter(
+                toKakaoPosition(runtime.maps, currentPosition),
+              )
+            }
+          }}
+        >
+          현재 위치로 이동
+        </button>
+      )}
       {mapError !== null && (
         <p className="auth-message error-message" role="alert">
           {mapError}
         </p>
       )}
       <p className="map-legend">
-        <span className="filtered-route-key">카카오 도보 경로</span>
+        {stableCoordinates.length >= 2 && (
+          <span className="filtered-route-key">카카오 도보 경로</span>
+        )}
         <span className="start-point-key">출발지</span>
-        <span className="end-point-key">목적지</span>
+        {destination !== null && <span className="end-point-key">목적지</span>}
         {currentPosition !== null && (
           <span className="current-position-key">현재 위치</span>
         )}

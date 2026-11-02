@@ -15,6 +15,7 @@ export interface KakaoMapInstance {
     paddingLeft?: number,
   ) => void
   addControl: (control: KakaoZoomControl, position: unknown) => void
+  setCenter: (position: KakaoLatLng) => void
 }
 
 interface KakaoLatLngBounds {
@@ -31,6 +32,8 @@ export interface KakaoPlaceDocument {
   place_name: string
   address_name: string
   road_address_name: string
+  category_name?: string
+  category_group_code?: string
   x: string
   y: string
 }
@@ -39,6 +42,7 @@ interface KakaoPlacesSearchOptions {
   location?: KakaoLatLng
   sort?: unknown
   size?: number
+  category_group_code?: string
 }
 
 interface KakaoPlacesService {
@@ -85,6 +89,16 @@ export interface KakaoMapsNamespace {
     position: KakaoLatLng
     image: KakaoMarkerImage
   }) => KakaoMarker
+  Circle: new (options: {
+    map: KakaoMapInstance
+    center: KakaoLatLng
+    radius: number
+    strokeWeight: number
+    strokeColor: string
+    strokeOpacity: number
+    fillColor: string
+    fillOpacity: number
+  }) => KakaoMapOverlay
   MarkerImage: new (
     source: string,
     size: KakaoSize,

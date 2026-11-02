@@ -6,11 +6,13 @@ import {
 } from '../features/auth/AuthRouteGuards'
 import { HistoryPage } from '../pages/HistoryPage'
 import { LoginPage } from '../pages/LoginPage'
-import { MeasurementPage } from '../pages/MeasurementPage'
 import { SessionDetailPage } from '../pages/SessionDetailPage'
 import { WalkingRoutePage } from '../pages/WalkingRoutePage'
 import { MeasurementProvider } from '../features/measurement/MeasurementProvider'
 import { SyncProvider } from '../features/sync/SyncProvider'
+import { DeveloperToolsPage } from '../pages/DeveloperToolsPage'
+import { HomePage } from '../pages/HomePage'
+import { WalkingAnalysisPage } from '../pages/WalkingAnalysisPage'
 
 export function AppRoutes() {
   return (
@@ -20,10 +22,12 @@ export function AppRoutes() {
       </Route>
 
       <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<MeasurementPage />} />
+        <Route path="/" element={<HomePage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route path="/history/summary" element={<WalkingAnalysisPage />} />
         <Route path="/walking-route" element={<WalkingRoutePage />} />
         <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
+        <Route path="/developer-tools" element={<DeveloperToolsPage />} />
       </Route>
     </Routes>
   )

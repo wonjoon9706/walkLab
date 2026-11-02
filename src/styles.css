@@ -17,6 +17,112 @@ body {
   min-height: 100vh;
 }
 
+.app-frame {
+  min-height: 100vh;
+  padding-bottom: 5rem;
+}
+
+.app-header {
+  position: sticky;
+  z-index: 20;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 3.5rem;
+  border-bottom: 1px solid #d7e1dc;
+  padding: 0.65rem max(1rem, calc((100% - 42rem) / 2));
+  background: rgb(245 247 244 / 94%);
+  backdrop-filter: blur(10px);
+}
+
+.app-brand {
+  color: #245c49;
+  font-size: 1.1rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.settings-menu {
+  position: relative;
+}
+
+.settings-menu summary {
+  cursor: pointer;
+  color: #31594b;
+  font-weight: 700;
+  list-style: none;
+}
+
+.settings-menu-panel {
+  position: absolute;
+  top: 2rem;
+  right: 0;
+  display: grid;
+  width: 12rem;
+  gap: 0.75rem;
+  border: 1px solid #c7d6cf;
+  border-radius: 0.75rem;
+  padding: 0.9rem;
+  background: #ffffff;
+  box-shadow: 0 0.75rem 2rem rgb(24 49 41 / 12%);
+}
+
+.settings-menu-panel a {
+  color: #24483c;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.settings-menu-panel .text-button {
+  justify-self: start;
+}
+
+.settings-menu-panel small {
+  color: #687a73;
+  line-height: 1.4;
+}
+
+.primary-navigation {
+  position: fixed;
+  z-index: 15;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid #c7d6cf;
+  padding: 0.5rem max(1rem, calc((100% - 32rem) / 2)) calc(0.5rem + env(safe-area-inset-bottom));
+  background: rgb(255 255 255 / 97%);
+}
+
+.primary-navigation a,
+.primary-navigation span {
+  border-radius: 0.65rem;
+  padding: 0.65rem;
+  color: #62736d;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+
+.primary-navigation a.active {
+  color: #1f6049;
+  background: #e1f1ea;
+}
+
+.primary-navigation span {
+  color: #9aa6a1;
+}
+
+.global-alert {
+  width: min(100% - 2rem, 42rem);
+  margin: 1rem auto 0;
+  border-radius: 0.65rem;
+  padding: 0.8rem;
+}
+
 button,
 input {
   font: inherit;
@@ -58,7 +164,7 @@ input:focus {
 .page-shell {
   width: min(100% - 2rem, 42rem);
   margin: 0 auto;
-  padding: 4rem 0;
+  padding: 2rem 0 3rem;
 }
 
 .eyebrow {
@@ -78,16 +184,115 @@ p {
 
 h1 {
   margin: 0 0 1rem;
-  font-size: clamp(2rem, 8vw, 3.5rem);
+  font-size: clamp(1.75rem, 7vw, 2.6rem);
   line-height: 1.1;
 }
 
 .status-card {
-  margin-top: 2rem;
+  margin-top: 1rem;
   padding: 1rem;
   border: 1px solid #c7d6cf;
   border-radius: 0.75rem;
   background: #ffffff;
+}
+
+.page-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page-heading-row .link-button {
+  flex: 0 0 auto;
+}
+
+.hero-metric {
+  margin: 0.25rem 0;
+  color: #194f3c;
+  font-size: clamp(2rem, 10vw, 3.5rem);
+  line-height: 1.05;
+}
+
+.eta-summary {
+  color: #4f625b;
+  font-weight: 700;
+}
+
+.eta-label {
+  margin: 0.75rem 0 0;
+  color: #566b63;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.eta-primary-card .hero-metric,
+.live-navigation-card .hero-metric {
+  margin-top: 0.35rem;
+  font-size: clamp(2.5rem, 6vw, 2.75rem);
+}
+
+.eta-key-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+}
+
+.eta-key-facts div {
+  border-left: 3px solid #94b9aa;
+  padding-left: 0.75rem;
+}
+
+.eta-key-facts dt {
+  color: #61736c;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.eta-key-facts dd {
+  margin: 0.3rem 0 0;
+  color: #183129;
+  font-size: clamp(1.1rem, 5vw, 1.45rem);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.primary-action,
+.navigation-stop-button {
+  width: 100%;
+  min-height: 3.5rem;
+  margin-top: 1rem;
+  font-size: 1.05rem;
+}
+
+.navigation-stop-button {
+  background: #7a3434;
+}
+
+.detail-disclosure {
+  margin-top: 1rem;
+}
+
+.detail-disclosure > summary {
+  cursor: pointer;
+  color: #31594b;
+  font-weight: 800;
+}
+
+.detail-disclosure > .status-card {
+  border: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.compact-save-status {
+  margin: 1rem 0 0;
+  border-radius: 999px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: center;
 }
 
 .status-card h2 {
@@ -268,6 +473,16 @@ h1 {
   font-size: 0.9rem;
 }
 
+.history-card .eligible-label {
+  color: #27634f;
+  font-weight: 700;
+}
+
+.history-card .excluded-label {
+  color: #8a5a19;
+  font-weight: 700;
+}
+
 .empty-history {
   margin-top: 2rem;
 }
@@ -289,6 +504,28 @@ h1 {
   min-height: 24rem;
   border-radius: 0.65rem;
   overflow: hidden;
+}
+
+.route-map-card {
+  position: relative;
+}
+
+.map-location-button {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.route-search-panels .status-card {
+  margin-top: 0.75rem;
+}
+
+.eta-primary-card {
+  border-color: #8eb5a6;
+  background: #fbfffd;
+}
+
+.navigation-key-metrics {
+  margin-top: 1rem;
 }
 
 .map-legend {
@@ -421,6 +658,9 @@ h1 {
   margin: 1rem 0 0;
   padding: 0;
   list-style: none;
+  max-height: min(22rem, 45vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .place-result-button {
@@ -434,9 +674,21 @@ h1 {
 }
 
 .place-result-button:hover,
-.place-result-button:focus-visible {
+.place-result-button:focus-visible,
+.place-result-button.active {
   border-color: #27634f;
   outline: 3px solid #c9e5da;
+}
+
+.place-change-button {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.search-status {
+  margin: 0;
+  color: #566b63;
+  font-size: 0.9rem;
 }
 
 .place-result-button span,
@@ -459,7 +711,8 @@ h1 {
 
 @media (max-width: 30rem) {
   .page-shell {
-    padding: 2rem 0;
+    width: min(100% - 1rem, 42rem);
+    padding: 1.25rem 0 2rem;
   }
 
   .email-summary {
@@ -475,6 +728,10 @@ h1 {
     grid-template-columns: 1fr;
   }
 
+  .eta-key-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .route-map {
     min-height: 19rem;
   }
@@ -485,5 +742,13 @@ h1 {
 
   .route-search-row button {
     width: 100%;
+  }
+}
+
+@media (min-width: 48rem) {
+  .route-search-panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
   }
 }

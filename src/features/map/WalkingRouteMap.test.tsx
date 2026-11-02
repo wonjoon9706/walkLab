@@ -22,6 +22,8 @@ function createFakeMaps() {
   const markerOptions: unknown[] = []
   const removedOverlays: unknown[] = []
   const setBounds = vi.fn()
+  const setCenter = vi.fn()
+  const circleOptions: unknown[] = []
 
   class LatLng {
     constructor(latitude: number, longitude: number) {
@@ -31,13 +33,17 @@ function createFakeMaps() {
     getLng() { return 0 }
   }
   class LatLngBounds { extend = vi.fn() }
-  class Map { addControl = vi.fn(); setBounds = setBounds }
+  class Map { addControl = vi.fn(); setBounds = setBounds; setCenter = setCenter }
   class Polyline {
     constructor(options: unknown) { polylineOptions.push(options) }
     setMap(map: unknown) { removedOverlays.push(map) }
   }
   class Marker {
     constructor(options: unknown) { markerOptions.push(options) }
+    setMap(map: unknown) { removedOverlays.push(map) }
+  }
+  class Circle {
+    constructor(options: unknown) { circleOptions.push(options) }
     setMap(map: unknown) { removedOverlays.push(map) }
   }
   class MarkerImage {}
@@ -51,6 +57,7 @@ function createFakeMaps() {
     Map,
     Polyline,
     Marker,
+    Circle,
     MarkerImage,
     Size,
     Point,
@@ -65,6 +72,8 @@ function createFakeMaps() {
     markerOptions,
     removedOverlays,
     setBounds,
+    setCenter,
+    circleOptions,
   }
 }
 
@@ -137,5 +146,26 @@ describe('WalkingRouteMap', () => {
     await waitFor(() => expect(fake.markerOptions).toHaveLength(3))
     expect(fake.polylineOptions).toHaveLength(2)
     expect(screen.getByText('현재 위치')).toBeInTheDocument()
+  })
+
+  it('경로가 없어도 현재 위치와 정확도 범위를 표시하고 중심을 이동한다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+    const currentPosition = { latitude: 37.5, longitude: 127.1 }
+
+    render(
+      <WalkingRouteMap
+        start={currentPosition}
+        currentPosition={currentPosition}
+        currentAccuracyM={18}
+      />,
+    )
+
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(2))
+    expect(fake.circleOptions).toHaveLength(1)
+    screen.getByRole('button', { name: '현재 위치로 이동' }).click()
+    expect(fake.setCenter).toHaveBeenCalledOnce()
+    expect(screen.getByText('현재 위치')).toBeInTheDocument()
+    expect(screen.queryByText('카카오 도보 경로')).toBeNull()
   })
 })

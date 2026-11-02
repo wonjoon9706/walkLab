@@ -10,6 +10,8 @@ export interface PlaceSearchResult {
   name: string
   address: string
   roadAddress: string | null
+  categoryName?: string
+  categoryGroupCode?: string
   coordinate: GeoCoordinate
 }
 

@@ -1,8 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { useAuth } from '../features/auth/authContext'
 import { useMeasurement } from '../features/measurement/measurementContext'
-import { getAuthErrorMessage } from '../services/auth/authErrorMessage'
 import { useSync } from '../features/sync/syncContext'
 
 const statusLabels = {
@@ -58,10 +55,8 @@ function formatElapsedTime(startedAt: string | null, endTime: number): string {
 }
 
 export function MeasurementPage() {
-  const { status: authStatus, user, signOut } = useAuth()
   const measurement = useMeasurement()
   const sync = useSync()
-  const [signOutError, setSignOutError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -72,21 +67,6 @@ export function MeasurementPage() {
     const timerId = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(timerId)
   }, [measurement.isActive])
-
-  async function handleSignOut() {
-    setSignOutError(null)
-
-    if (measurement.isActive) {
-      setSignOutError('측정 종료 버튼을 누른 뒤 로그아웃해 주세요.')
-      return
-    }
-
-    try {
-      await signOut()
-    } catch (error) {
-      setSignOutError(getAuthErrorMessage(error, 'signOut'))
-    }
-  }
 
   async function handleStart() {
     setNow(Date.now())
@@ -156,13 +136,6 @@ export function MeasurementPage() {
           </p>
         )}
 
-        {authStatus !== 'authenticated' && measurement.isActive && (
-          <p className="auth-message error-message" role="alert">
-            로그인 세션이 만료됐지만 GPS와 로컬 저장은 계속됩니다. 측정을 종료한 뒤
-            다시 로그인해 주세요.
-          </p>
-        )}
-
         <div className="button-row measurement-actions">
           {!measurement.isActive ? (
             <button type="button" onClick={handleStart}>
@@ -215,43 +188,6 @@ export function MeasurementPage() {
         </ul>
       </section>
 
-      <section className="status-card" aria-labelledby="account-title">
-        <h2 id="account-title">로그인 계정</h2>
-        <p>사용자 ID: {user?.id ?? '로그인 세션 만료'}</p>
-        <div className="button-row">
-          {measurement.isActive ? (
-            <>
-              <span className="disabled-link" aria-disabled="true">
-                도보 길찾기
-              </span>
-              <span className="disabled-link" aria-disabled="true">
-                기록 목록
-              </span>
-            </>
-          ) : (
-            <>
-              <Link className="link-button" to="/walking-route">
-                도보 길찾기
-              </Link>
-              <Link className="link-button" to="/history">
-                기록 목록
-              </Link>
-            </>
-          )}
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={handleSignOut}
-          >
-            로그아웃
-          </button>
-        </div>
-        {signOutError !== null && (
-          <p className="auth-message error-message" role="alert">
-            {signOutError}
-          </p>
-        )}
-      </section>
     </main>
   )
 }

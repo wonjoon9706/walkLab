@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   formatDistance,
   formatDuration,
+  formatKoreanArrivalTime,
   formatKoreanDateTime,
   formatPace,
   formatSpeed,
@@ -15,6 +16,21 @@ describe('기록 표시 형식', () => {
     expect(formatted).toContain('10')
     expect(formatted).toContain('30')
     expect(formatted).not.toContain('29')
+  })
+
+  it('예상 도착시각은 같은 날에는 시간만, 날짜가 바뀌면 내일을 표시한다', () => {
+    expect(
+      formatKoreanArrivalTime(
+        '2026-11-02T01:38:00.000Z',
+        new Date('2026-11-02T00:00:00.000Z'),
+      ),
+    ).toBe('오전 10:38')
+    expect(
+      formatKoreanArrivalTime(
+        '2026-11-02T15:10:00.000Z',
+        new Date('2026-11-02T14:50:00.000Z'),
+      ),
+    ).toContain('내일')
   })
 
   it('시간, 거리, 속도를 읽기 쉬운 단위로 표시한다', () => {

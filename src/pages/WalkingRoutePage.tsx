@@ -15,7 +15,7 @@ import { PlaceSearchPanel } from '../features/places/PlaceSearchPanel'
 import { useSync } from '../features/sync/syncContext'
 import {
   CurrentLocationError,
-  getCurrentLocation,
+  getCurrentLocationFix,
 } from '../services/location/currentLocation'
 import { loadCurrentWalkingSpeedModel } from '../services/learning/currentWalkingSpeedModel'
 import {
@@ -26,17 +26,21 @@ import { walkingRouteClient } from '../services/routing/walkingRouteClient'
 import {
   formatDistance,
   formatDuration,
-  formatKoreanDateTime,
-  formatSpeed,
+  formatKoreanArrivalTime,
 } from '../utils/format'
 
 type LoadingStatus = 'idle' | 'loading' | 'ready' | 'error'
 type OriginSource = 'current_location' | 'searched_place'
 
+interface GuidanceResult {
+  durationSeconds: number | null
+  distanceM: number | null
+}
+
 function getNavigationStatusLabel(status: string): string {
   switch (status) {
     case 'starting':
-      return 'GPS 확인 중'
+      return 'GPS 위치 확인 중'
     case 'moving':
       return '이동 중'
     case 'stationary':
@@ -46,26 +50,13 @@ function getNavigationStatusLabel(status: string): string {
     case 'rerouting':
       return '경로 재탐색 중'
     case 'stale':
-      return 'GPS 갱신 중단'
+      return 'GPS 위치 갱신 대기'
     case 'gps_unstable':
-      return 'GPS 불안정'
+      return 'GPS 위치 확인 중'
     case 'error':
-      return '안내 오류'
+      return 'GPS 또는 안내 오류'
     default:
       return '안내 대기'
-  }
-}
-
-function getLocalSaveLabel(status: string): string {
-  switch (status) {
-    case 'saving':
-      return '저장 중'
-    case 'saved':
-      return '저장됨'
-    case 'failed':
-      return '저장 실패'
-    default:
-      return '대기'
   }
 }
 
@@ -153,6 +144,9 @@ export function WalkingRoutePage() {
     useState<OriginSource>('current_location')
   const [originPlace, setOriginPlace] =
     useState<PlaceSearchResult | null>(null)
+  const [currentLocation, setCurrentLocation] =
+    useState<GeoCoordinate | null>(null)
+  const [currentAccuracyM, setCurrentAccuracyM] = useState<number | null>(null)
   const [locationStatus, setLocationStatus] =
     useState<LoadingStatus>('loading')
   const [locationError, setLocationError] = useState<string | null>(null)
@@ -168,6 +162,8 @@ export function WalkingRoutePage() {
     useState<string | null>(null)
   const [isGuidanceStarting, setIsGuidanceStarting] = useState(false)
   const [showGuidanceSaveResult, setShowGuidanceSaveResult] = useState(false)
+  const [guidanceResult, setGuidanceResult] =
+    useState<GuidanceResult | null>(null)
   const displayedRoute =
     navigation.isActive && navigation.route !== null
       ? navigation.route
@@ -208,7 +204,7 @@ export function WalkingRoutePage() {
   async function requestRoute(
     start: GeoCoordinate,
     nextDestination: PlaceSearchResult,
-  ) {
+  ): Promise<WalkingRoute | null> {
     const requestId = routeRequestIdRef.current + 1
     routeRequestIdRef.current = requestId
     setRoute(null)
@@ -219,13 +215,15 @@ export function WalkingRoutePage() {
         start,
         destination: nextDestination.coordinate,
       })
-      if (routeRequestIdRef.current !== requestId) return
+      if (routeRequestIdRef.current !== requestId) return null
       setRoute(nextRoute)
       setRouteStatus('ready')
+      return nextRoute
     } catch (error) {
-      if (routeRequestIdRef.current !== requestId) return
+      if (routeRequestIdRef.current !== requestId) return null
       setRouteStatus('error')
       setRouteError(getRouteErrorMessage(error))
+      return null
     }
   }
 
@@ -237,7 +235,10 @@ export function WalkingRoutePage() {
     setRouteError(null)
     setRouteStatus('idle')
     try {
-      const coordinate = await getCurrentLocation()
+      const fix = await getCurrentLocationFix()
+      const coordinate = fix.coordinate
+      setCurrentLocation(coordinate)
+      setCurrentAccuracyM(fix.accuracyM)
       setOrigin(coordinate)
       setOriginSource('current_location')
       setOriginPlace(null)
@@ -255,8 +256,11 @@ export function WalkingRoutePage() {
     let isCurrent = true
     async function loadInitialLocation() {
       try {
-        const coordinate = await getCurrentLocation()
+        const fix = await getCurrentLocationFix()
+        const coordinate = fix.coordinate
         if (isCurrent) {
+          setCurrentLocation(coordinate)
+          setCurrentAccuracyM(fix.accuracyM)
           setOrigin(coordinate)
           setOriginSource('current_location')
           setLocationStatus('ready')
@@ -339,6 +343,7 @@ export function WalkingRoutePage() {
     if (guidanceStartingRef.current) return
     setGuidanceStartError(null)
     setShowGuidanceSaveResult(false)
+    setGuidanceResult(null)
     if (route === null || destination === null) {
       setGuidanceStartError('도보 경로를 먼저 조회해 주세요.')
       return
@@ -354,9 +359,46 @@ export function WalkingRoutePage() {
     guidanceStartCancelledRef.current = false
     setIsGuidanceStarting(true)
     linkedMeasurementRef.current = false
+    let routeForNavigation = route
+    if (originSource === 'current_location') {
+      try {
+        const latestFix = await getCurrentLocationFix()
+        setCurrentLocation(latestFix.coordinate)
+        setCurrentAccuracyM(latestFix.accuracyM)
+        setOrigin(latestFix.coordinate)
+        const refreshedRoute = await requestRoute(
+          latestFix.coordinate,
+          destination,
+        )
+        if (refreshedRoute === null) {
+          guidanceStartingRef.current = false
+          setIsGuidanceStarting(false)
+          setGuidanceStartError(
+            '최신 현재 위치에서 경로를 다시 확인하지 못해 안내를 시작하지 않았습니다.',
+          )
+          return
+        }
+        routeForNavigation = refreshedRoute
+      } catch (error) {
+        guidanceStartingRef.current = false
+        setIsGuidanceStarting(false)
+        setLocationStatus('error')
+        setLocationError(getLocationErrorMessage(error))
+        setGuidanceStartError(
+          '현재 위치를 다시 확인하지 못해 안내를 시작하지 않았습니다.',
+        )
+        return
+      }
+    }
+
+    if (!isMountedRef.current || guidanceStartCancelledRef.current) {
+      guidanceStartingRef.current = false
+      if (isMountedRef.current) setIsGuidanceStarting(false)
+      return
+    }
     const navigationStarted = navigation.startWithPositionSource(
       {
-        route,
+        route: routeForNavigation,
         destination: destination.coordinate,
         baselineSpeed,
         forceInitialReroute: originSource === 'searched_place',
@@ -396,11 +438,26 @@ export function WalkingRoutePage() {
 
   async function stopNavigation() {
     guidanceStartCancelledRef.current = true
+    const durationSeconds =
+      measurement.startedAt === null
+        ? null
+        : Math.max(
+            0,
+            (Date.now() - Date.parse(measurement.startedAt)) / 1000,
+          )
+    const distanceM =
+      navigation.route === null || navigation.remainingDistanceM === null
+        ? null
+        : Math.max(
+            0,
+            navigation.route.distanceM - navigation.remainingDistanceM,
+          )
     navigation.stop()
     if (!linkedMeasurementRef.current) return
 
     linkedMeasurementRef.current = false
     await measurement.stopMeasurement()
+    setGuidanceResult({ durationSeconds, distanceM })
     setShowGuidanceSaveResult(true)
   }
 
@@ -408,125 +465,145 @@ export function WalkingRoutePage() {
     <main className="page-shell walking-route-page">
       <p className="eyebrow">WalkLab</p>
       <h1>도보 길찾기</h1>
-      <p className="page-description">
-        현재 위치 또는 직접 선택한 출발지에서 목적지까지 실제 도보 경로를
-        조회하고 개인 보행속도로 예상시간을 계산합니다. 안내를 시작하면 Safari
-        화면이 켜진 동안 현재 위치와 남은 예상시간을 갱신하고, 같은 GPS 원본을
-        보행 기록으로 자동 저장합니다.
-      </p>
-
-      <PlaceSearchPanel
-        idPrefix="origin-place"
-        title="출발지"
-        searchOrigin={origin}
-        selectedPlace={originPlace}
-        onSelect={selectOrigin}
-      >
-        {locationStatus === 'loading' && (
-          <p role="status">현재 GPS 위치를 확인하는 중입니다.</p>
-        )}
-        {origin !== null && originSource === 'current_location' && (
-          <p className="selected-place-summary">
-            선택: <strong>현재 위치</strong>
-            <br />
-            <span>GPS로 확인한 위치</span>
-          </p>
-        )}
-        {locationError !== null && (
-          <p className="error-message auth-message" role="alert">
-            {locationError}
-          </p>
-        )}
-        <button
-          type="button"
-          className="secondary-button"
-          disabled={locationStatus === 'loading'}
-          onClick={() => void loadLocation()}
-        >
-          현재 위치로 설정
-        </button>
-      </PlaceSearchPanel>
-
-      <PlaceSearchPanel
-        idPrefix="destination"
-        title="목적지"
-        searchOrigin={origin}
-        selectedPlace={destination}
-        onSelect={selectDestination}
-      />
-
-      {destination !== null && (
-        <section className="status-card" aria-labelledby="route-result-title">
-          <h2 id="route-result-title">도보 경로</h2>
-          <p>
-            출발지:{' '}
-            <strong>
-              {originSource === 'current_location'
-                ? '현재 위치'
-                : originPlace?.name ?? '선택한 장소'}
-            </strong>
-            <br />
-            목적지: <strong>{destination.name}</strong>
-          </p>
-          <p className="page-description">
-            {destination.roadAddress ?? destination.address}
-          </p>
-          {routeStatus === 'loading' && (
-            <p role="status">카카오 도보 경로를 조회하는 중입니다.</p>
-          )}
-          {routeError !== null && (
-            <p className="error-message auth-message" role="alert">
-              {routeError}
-            </p>
-          )}
-          {route !== null && origin !== null && (
-            <WalkingRouteMap
-              coordinates={displayedRoute?.coordinates ?? route.coordinates}
-              start={origin}
-              destination={destination.coordinate}
-              currentPosition={
-                navigation.isActive ? navigation.currentPosition : null
-              }
-              remainingCoordinates={
-                navigation.isActive
-                  ? navigation.remainingCoordinates
-                  : undefined
-              }
-            />
-          )}
-          {route !== null && (
-            <div className="button-row navigation-controls">
-              {!navigation.isActive ? (
+      {!navigation.isActive && (
+        <>
+          <div className="route-search-panels">
+            <PlaceSearchPanel
+              idPrefix="origin-place"
+              title="출발지"
+              searchOrigin={origin}
+              selectedPlace={originPlace}
+              onSelect={selectOrigin}
+              searchInitiallyOpen={false}
+            >
+              {locationStatus === 'loading' && (
+                <p role="status">현재 위치를 확인하는 중입니다.</p>
+              )}
+              {originSource === 'current_location' && (
+                <p className="selected-place-summary">
+                  <strong>현재 위치</strong>
+                  <br />
+                  <span>
+                    {locationStatus === 'ready'
+                      ? `GPS 확인됨${
+                          currentAccuracyM === null
+                            ? ''
+                            : ` · 정확도 약 ${Math.round(currentAccuracyM)}m`
+                        }`
+                      : locationStatus === 'loading'
+                        ? 'GPS 확인 중'
+                        : 'GPS 확인 필요'}
+                  </span>
+                </p>
+              )}
+              {locationError !== null && (
+                <p className="error-message auth-message" role="alert">
+                  {locationError}
+                </p>
+              )}
+              {(locationStatus === 'error' || originSource === 'searched_place') && (
                 <button
                   type="button"
-                  disabled={isGuidanceStarting}
-                  onClick={() => void startNavigation()}
+                  className="secondary-button"
+                  disabled={locationStatus === 'loading'}
+                  onClick={() => void loadLocation()}
                 >
-                  {isGuidanceStarting ? '안내 준비 중' : '안내 시작'}
-                </button>
-              ) : (
-                <button type="button" onClick={() => void stopNavigation()}>
-                  안내 종료
+                  내 위치 사용
                 </button>
               )}
+            </PlaceSearchPanel>
+
+            <PlaceSearchPanel
+              idPrefix="destination"
+              title="목적지"
+              searchOrigin={origin}
+              selectedPlace={destination}
+              onSelect={selectDestination}
+            />
+          </div>
+        </>
+      )}
+
+      {origin !== null && (
+        <section className="status-card map-card route-map-card" aria-labelledby="route-map-title">
+          <h2 id="route-map-title">
+            {navigation.isActive ? `${destination?.name ?? '목적지'} 안내` : '지도'}
+          </h2>
+          <WalkingRouteMap
+            coordinates={displayedRoute?.coordinates}
+            start={origin}
+            destination={destination?.coordinate ?? null}
+            currentPosition={
+              navigation.isActive
+                ? navigation.currentPosition
+                : currentLocation
+            }
+            currentAccuracyM={navigation.isActive ? null : currentAccuracyM}
+            remainingCoordinates={
+              navigation.isActive ? navigation.remainingCoordinates : undefined
+            }
+          />
+          {routeStatus === 'loading' && (
+            <p role="status">도보 경로를 조회하는 중입니다.</p>
+          )}
+          {routeError !== null && (
+            <p className="error-message auth-message" role="alert">{routeError}</p>
+          )}
+        </section>
+      )}
+
+      {!navigation.isActive && route !== null && eta !== null && destination !== null && (
+        <section className="status-card eta-primary-card" aria-labelledby="eta-title">
+          <p className="eyebrow">{destination.name}까지</p>
+          <p className="eta-label">예상 소요시간</p>
+          <h2 id="eta-title" className="hero-metric">
+            {formatDuration(eta.appliedDurationSeconds)}
+          </h2>
+          <dl className="eta-key-facts">
+            <div>
+              <dt>거리</dt>
+              <dd>{formatDistance(route.distanceM)}</dd>
             </div>
-          )}
+            <div>
+              <dt>예상 도착</dt>
+              <dd>
+                {formatKoreanArrivalTime(
+                  eta.arrivalAt,
+                  new Date(eta.calculatedAt),
+                )}
+              </dd>
+            </div>
+          </dl>
+          <button
+            type="button"
+            className="primary-action"
+            disabled={isGuidanceStarting}
+            onClick={() => void startNavigation()}
+          >
+            {isGuidanceStarting ? '안내 준비 중' : '안내 시작'}
+          </button>
           {guidanceStartError !== null && (
-            <p className="error-message auth-message" role="alert">
-              {guidanceStartError}
-            </p>
+            <p className="error-message auth-message" role="alert">{guidanceStartError}</p>
           )}
-          {!navigation.isActive && navigation.status === 'error' && (
-            <p className="error-message auth-message" role="alert">
-              {navigation.message}
+          {originSource === 'searched_place' && (
+            <p className="auth-message warning-card">
+              선택한 출발지에서 지금 출발하는 기준입니다.
             </p>
           )}
         </section>
       )}
 
+      {!navigation.isActive && navigation.status === 'error' && (
+        <p className="error-message auth-message" role="alert">{navigation.message}</p>
+      )}
+
       {navigation.isActive && (
         <section className="status-card live-navigation-card" aria-labelledby="live-navigation-title">
-          <h2 id="live-navigation-title">실시간 도보 안내</h2>
+          <p className="eyebrow">{destination?.name ?? '목적지'}까지</p>
+          <p className="eta-label">남은 예상시간</p>
+          <h2 id="live-navigation-title" className="hero-metric">
+            {formatDuration(navigation.remainingDurationSeconds)}
+          </h2>
           <p
             className={`auth-message ${
               navigation.status === 'moving'
@@ -537,84 +614,54 @@ export function WalkingRoutePage() {
           >
             {getNavigationStatusLabel(navigation.status)}
           </p>
-          <dl className="measurement-grid detail-metrics">
+          <dl className="eta-key-facts navigation-key-metrics">
             <div>
               <dt>남은 경로 거리</dt>
               <dd>
                 {navigation.remainingDistanceM === null
-                  ? '계산 중'
+                  ? '계산할 수 없음'
                   : formatDistance(navigation.remainingDistanceM)}
               </dd>
-            </div>
-            <div>
-              <dt>경로 진행도</dt>
-              <dd>
-                {navigation.progressRatio === null
-                  ? '계산 중'
-                  : `${Math.round(navigation.progressRatio * 100)}%`}
-              </dd>
-            </div>
-            <div>
-              <dt>남은 예상시간</dt>
-              <dd>{formatDuration(navigation.remainingDurationSeconds)}</dd>
             </div>
             <div>
               <dt>예상 도착시각</dt>
               <dd>
                 {navigation.arrivalAt === null
-                  ? '계산 중'
-                  : formatKoreanDateTime(navigation.arrivalAt)}
-              </dd>
-            </div>
-            <div>
-              <dt>최근 실제 보행속도</dt>
-              <dd>{formatSpeed(navigation.recentSpeedMps)}</dd>
-            </div>
-            <div>
-              <dt>ETA 적용속도</dt>
-              <dd>{formatSpeed(navigation.appliedSpeedMps)}</dd>
-            </div>
-            <div>
-              <dt>속도 기준</dt>
-              <dd>
-                {navigation.speedSource === 'recent_blended'
-                  ? '최근속도 60% + 학습속도 40%'
-                  : navigation.speedSource === 'personalized'
-                    ? 'G7 개인 추정속도'
-                    : '기본속도'}
-              </dd>
-            </div>
-            <div>
-              <dt>마지막 GPS 갱신</dt>
-              <dd>
-                {navigation.lastPositionAt === null
-                  ? '수신 대기 중'
-                  : formatKoreanDateTime(navigation.lastPositionAt)}
+                  ? '계산할 수 없음'
+                  : formatKoreanArrivalTime(
+                      navigation.arrivalAt,
+                      navigation.lastPositionAt === null
+                        ? new Date()
+                        : new Date(navigation.lastPositionAt),
+                    )}
               </dd>
             </div>
           </dl>
           {navigation.message !== null && (
-            <p className="page-description">{navigation.message}</p>
+            <p
+              className={
+                navigation.status === 'error'
+                  ? 'auth-message error-message'
+                  : 'auth-message warning-card'
+              }
+            >
+              {navigation.message}
+            </p>
           )}
-          <p className="page-description">
-            화면 잠금, Safari 종료, 백그라운드 상태에서는 GPS 갱신을 보장하지
-            않습니다.
-          </p>
           <p
-            className={`auth-message ${
+            className={`compact-save-status ${
               measurement.localSaveStatus === 'failed'
                 ? 'error-message'
                 : 'success-message'
             }`}
             role="status"
           >
-            보행 기록 자동 저장 중 · 로컬{' '}
-            {getLocalSaveLabel(measurement.localSaveStatus)} · 저장 지점{' '}
-            {measurement.savedPointCount}개
+            보행 기록 자동 저장 중
+            {measurement.localSaveStatus === 'failed' ? ' · 저장 실패' : ''}
           </p>
-          <p className="page-description">
-            {getSyncStatusLabel(sync.status)} · 전송 대기 {sync.pendingCount}건
-          </p>
+          <button type="button" className="navigation-stop-button" onClick={() => void stopNavigation()}>
+            안내 종료
+          </button>
         </section>
       )}
 
@@ -629,90 +676,28 @@ export function WalkingRoutePage() {
             }`}
             role="status"
           >
-            로컬 {getLocalSaveLabel(measurement.localSaveStatus)} · GPS 지점{' '}
-            {measurement.savedPointCount}개
+            {measurement.localSaveStatus === 'failed'
+              ? '기록 저장에 실패했습니다.'
+              : '보행 기록이 로컬에 저장되었습니다.'}
           </p>
-          <p className="page-description">
-            {getSyncStatusLabel(sync.status)} · 전송 대기 {sync.pendingCount}건 ·
-            서버 확인 {sync.confirmedCount}건
-          </p>
-        </section>
-      )}
-
-      {route !== null && eta !== null && destination !== null && (
-        <section className="status-card" aria-labelledby="eta-title">
-          <h2 id="eta-title">예상 도착 정보</h2>
           <dl className="measurement-grid detail-metrics">
+            <div><dt>측정시간</dt><dd>{formatDuration(guidanceResult?.durationSeconds ?? null)}</dd></div>
             <div>
-              <dt>도보 경로 거리</dt>
-              <dd>{formatDistance(route.distanceM)}</dd>
-            </div>
-            <div>
-              <dt>적용 예상시간</dt>
-              <dd>{formatDuration(eta.appliedDurationSeconds)}</dd>
-            </div>
-            <div>
-              <dt>기본속도 기준</dt>
-              <dd>{formatDuration(eta.defaultDurationSeconds)}</dd>
-            </div>
-            <div>
-              <dt>카카오 경로 기본시간</dt>
-              <dd>{formatDuration(eta.providerDurationSeconds)}</dd>
-            </div>
-            <div>
-              <dt>실제 적용속도</dt>
-              <dd>{formatSpeed(eta.speedProfile.speedMps)}</dd>
-            </div>
-            <div>
-              <dt>적용 모델</dt>
+              <dt>이동거리(경로 기준)</dt>
               <dd>
-                {eta.speedProfile.source === 'personalized'
-                  ? '개인화 추정'
-                  : '기본속도'}
+                {guidanceResult === null || guidanceResult.distanceM === null
+                  ? '확인할 수 없음'
+                  : formatDistance(guidanceResult.distanceM)}
               </dd>
             </div>
-            <div>
-              <dt>예상 도착시각</dt>
-              <dd>{formatKoreanDateTime(eta.arrivalAt)}</dd>
-            </div>
           </dl>
-          <p
-            className={`auth-message ${
-              eta.speedProfile.source === 'personalized'
-                ? 'success-message'
-                : 'warning-card'
-            }`}
-          >
-            {eta.speedProfile.source === 'personalized'
-              ? `G7 유효 세션 ${eta.speedProfile.validSessionCount}개의 개인 추정속도를 적용했습니다.`
-              : 'G7 학습값이 준비되지 않아 4.8km/h 기본속도를 적용했습니다.'}
-          </p>
-          {speedModelStatus === 'error' && (
-            <p className="auth-message warning-card">
-              개인 보행 기록을 불러오지 못해 기본속도로 계산했습니다.
-            </p>
-          )}
-          <p className="page-description">
-            카카오 기본시간과 WalkLab 예상시간은 계산 기준이 다릅니다. WalkLab
-            값에는 아직 신호 대기, 경사도와 날씨 보정이 포함되지 않습니다.
-          </p>
-          {originSource === 'searched_place' && (
-            <p className="auth-message warning-card">
-              현재 GPS 위치가 아닌 선택한 출발지를 기준으로 지금 출발한다고
-              가정한 예상시간입니다.
-            </p>
-          )}
+          <p className="page-description">{getSyncStatusLabel(sync.status)}</p>
+          <Link className="link-button secondary-button" to="/history">기록 보기</Link>
         </section>
       )}
-
-      <div className="button-row">
-        <Link className="link-button secondary-button" to="/">
-          측정 홈으로
-        </Link>
-        <Link className="link-button secondary-button" to="/history">
-          기록 목록
-        </Link>
-      </div>
+      {speedModelStatus === 'error' && route !== null && (
+        <p className="auth-message warning-card">개인 기록을 불러오지 못해 기본속도를 적용했습니다.</p>
+      )}
     </main>
   )
 }

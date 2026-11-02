@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getCurrentLocation } from './currentLocation'
+import { getCurrentLocation, getCurrentLocationFix } from './currentLocation'
 
 describe('현재 위치 조회', () => {
   it('브라우저 좌표를 위도·경도 객체로 변환한다', async () => {
@@ -14,6 +14,21 @@ describe('현재 위치 조회', () => {
     await expect(getCurrentLocation(geolocation)).resolves.toEqual({
       latitude: 37.5,
       longitude: 127.1,
+    })
+  })
+
+  it('지도 표시용 위치에는 브라우저가 제공한 정확도를 함께 보존한다', async () => {
+    const geolocation = {
+      getCurrentPosition: vi.fn((success: PositionCallback) => {
+        success({
+          coords: { latitude: 37.5, longitude: 127.1, accuracy: 18 },
+        } as GeolocationPosition)
+      }),
+    } as unknown as Geolocation
+
+    await expect(getCurrentLocationFix(geolocation)).resolves.toEqual({
+      coordinate: { latitude: 37.5, longitude: 127.1 },
+      accuracyM: 18,
     })
   })
 
