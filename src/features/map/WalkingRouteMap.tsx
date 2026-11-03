@@ -12,7 +12,7 @@ import {
 
 interface WalkingRouteMapProps {
   coordinates?: GeoCoordinate[]
-  start: GeoCoordinate
+  start: GeoCoordinate | null
   destination?: GeoCoordinate | null
   currentPosition?: GeoCoordinate | null
   currentAccuracyM?: number | null
@@ -144,10 +144,9 @@ export function WalkingRouteMap({
         const path = stableCoordinates.map((coordinate) =>
           toKakaoPosition(maps, coordinate),
         )
-        const initialCenter = toKakaoPosition(
-          maps,
-          start,
-        )
+        const initialCoordinate = start ?? destination
+        if (initialCoordinate === null) return
+        const initialCenter = toKakaoPosition(maps, initialCoordinate)
         const map = new maps.Map(container, {
           center: initialCenter,
           level: 4,
@@ -337,11 +336,13 @@ export function WalkingRouteMap({
               isLiveMode ? 0.55 : 0.95,
           }))
         }
-        overlays.push(new maps.Marker({
+        if (start !== null) {
+          overlays.push(new maps.Marker({
             map,
             position: toKakaoPosition(maps, start),
             image: createMarkerImage(maps, '#2a8c58', '도보 경로 출발지'),
           }))
+        }
         if (destination !== null) {
           overlays.push(new maps.Marker({
             map,
@@ -350,10 +351,12 @@ export function WalkingRouteMap({
           }))
         }
 
-        if (path.length >= 2 && destination !== null) {
+        if (destination !== null && (start !== null || path.length >= 2)) {
           const bounds = new maps.LatLngBounds()
           path.forEach((position) => bounds.extend(position))
-          bounds.extend(toKakaoPosition(maps, start))
+          if (start !== null) {
+            bounds.extend(toKakaoPosition(maps, start))
+          }
           bounds.extend(toKakaoPosition(maps, destination))
           map.setBounds(bounds, 40, 40, 40, 40)
         }
@@ -518,7 +521,7 @@ export function WalkingRouteMap({
         {stableCoordinates.length >= 2 && (
           <span className="filtered-route-key">카카오 도보 경로</span>
         )}
-        <span className="start-point-key">출발지</span>
+        {start !== null && <span className="start-point-key">출발지</span>}
         {destination !== null && <span className="end-point-key">목적지</span>}
         {currentPosition !== null && (
           <span className="current-position-key">현재 위치</span>

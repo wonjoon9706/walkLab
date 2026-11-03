@@ -215,6 +215,38 @@ describe('WalkingRouteMap', () => {
     expect(screen.queryByText('카카오 도보 경로')).toBeNull()
   })
 
+  it('경로 없이 출발지와 목적지만으로 마커 범위를 맞춘다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+
+    render(
+      <WalkingRouteMap
+        start={{ latitude: 37.5, longitude: 127.1 }}
+        destination={{ latitude: 37.51, longitude: 127.11 }}
+      />,
+    )
+
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(2))
+    expect(fake.polylineOptions).toHaveLength(0)
+    expect(fake.setBounds).toHaveBeenCalledOnce()
+  })
+
+  it('출발지가 없어도 목적지 마커를 중심으로 위치를 미리 본다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+
+    render(
+      <WalkingRouteMap
+        start={null}
+        destination={{ latitude: 37.51, longitude: 127.11 }}
+      />,
+    )
+
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(1))
+    expect(screen.queryByText('출발지')).toBeNull()
+    expect(screen.getByText('목적지')).toBeInTheDocument()
+  })
+
   it('짧은 터치는 출발지를 만들지 않고 500ms 길게 누른 뒤 확정한다', async () => {
     const fake = createFakeMaps()
     loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
@@ -241,11 +273,11 @@ describe('WalkingRouteMap', () => {
       clientY: 200,
     })
     act(() => vi.advanceTimersByTime(499))
-    expect(screen.queryByRole('button', { name: '이 위치로 출발' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '출발지 설정' })).toBeNull()
 
     fireEvent.pointerUp(window, { pointerId: 1, pointerType: 'touch' })
     act(() => vi.advanceTimersByTime(1))
-    expect(screen.queryByRole('button', { name: '이 위치로 출발' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '출발지 설정' })).toBeNull()
 
     fireEvent.pointerDown(map, {
       pointerId: 2,
@@ -265,7 +297,7 @@ describe('WalkingRouteMap', () => {
       clientX: 120,
       clientY: 210,
     })
-    fireEvent.click(screen.getByRole('button', { name: '이 위치로 출발' }))
+    fireEvent.click(screen.getByRole('button', { name: '출발지 설정' }))
 
     const selectedCoordinate = onSelectStart.mock.calls[0][0]
     expect(selectedCoordinate.latitude).toBeCloseTo(37.5021)
@@ -314,7 +346,7 @@ describe('WalkingRouteMap', () => {
 
     expect(fake.markerOptions).toHaveLength(1)
     expect(fake.setDraggable).not.toHaveBeenCalledWith(false)
-    expect(screen.queryByRole('button', { name: '이 위치로 출발' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '출발지 설정' })).toBeNull()
   })
 
   it('임시 마커를 드래그한 마지막 좌표만 확정한다', async () => {
@@ -343,7 +375,7 @@ describe('WalkingRouteMap', () => {
     fireEvent.pointerUp(window, { pointerId: 4, pointerType: 'mouse' })
 
     act(() => fake.dragDraftMarker(37.551, 126.991))
-    fireEvent.click(screen.getByRole('button', { name: '이 위치로 출발' }))
+    fireEvent.click(screen.getByRole('button', { name: '출발지 설정' }))
     expect(onSelectStart).toHaveBeenCalledWith({
       latitude: 37.551,
       longitude: 126.991,

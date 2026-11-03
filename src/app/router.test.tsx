@@ -76,10 +76,11 @@ function renderRoute(
 
 describe('인증 라우팅', () => {
   it.each([
-    ['/', '도보 길찾기'],
+    ['/', '길찾기'],
     ['/history', '내 보행 기록'],
     ['/history/summary', '나의 보행 분석'],
-    ['/walking-route', '도보 길찾기'],
+    ['/walking-route', '길찾기'],
+    ['/transit-route', '길찾기'],
     ['/sessions/test-session', '기록 상세'],
   ])('로그인 사용자는 %s 경로에서 %s 화면을 본다', async (path, heading) => {
     const service = createFakeAuthService({
@@ -186,7 +187,7 @@ describe('인증 라우팅', () => {
     renderRoute('/login', service)
 
     expect(
-      await screen.findByRole('heading', { name: '도보 길찾기' }),
+      await screen.findByRole('heading', { name: '길찾기' }),
     ).toBeInTheDocument()
   })
 
@@ -218,7 +219,7 @@ describe('인증 라우팅', () => {
       }),
     })
     renderRoute('/', service)
-    await screen.findByRole('heading', { name: '도보 길찾기' })
+    await screen.findByRole('heading', { name: '길찾기' })
 
     act(() => {
       authChangeListener?.({
@@ -337,7 +338,7 @@ describe('인증 라우팅', () => {
     renderRoute('/walking-route', service, activeMeasurement)
 
     expect(
-      await screen.findByRole('heading', { name: '도보 길찾기' }),
+      await screen.findByRole('heading', { name: '길찾기' }),
     ).toBeInTheDocument()
   })
 
@@ -355,7 +356,7 @@ describe('인증 라우팅', () => {
     renderRoute('/history', service, activeMeasurement)
 
     expect(
-      await screen.findByRole('heading', { name: '도보 길찾기' }),
+      await screen.findByRole('heading', { name: '길찾기' }),
     ).toBeInTheDocument()
   })
 })

@@ -48,6 +48,11 @@ export interface KakaoPlaceDocument {
   y: string
 }
 
+export interface KakaoAddressDocument {
+  address: { address_name: string } | null
+  road_address: { address_name: string } | null
+}
+
 interface KakaoPlacesSearchOptions {
   location?: KakaoLatLng
   sort?: unknown
@@ -63,6 +68,14 @@ interface KakaoPlacesService {
       status: string,
     ) => void,
     options?: KakaoPlacesSearchOptions,
+  ) => void
+}
+
+interface KakaoGeocoderService {
+  coord2Address: (
+    longitude: number,
+    latitude: number,
+    callback: (results: KakaoAddressDocument[], status: string) => void,
   ) => void
 }
 
@@ -134,6 +147,7 @@ export interface KakaoMapsNamespace {
   }
   services: {
     Places: new () => KakaoPlacesService
+    Geocoder: new () => KakaoGeocoderService
     Status: {
       OK: string
       ZERO_RESULT: string

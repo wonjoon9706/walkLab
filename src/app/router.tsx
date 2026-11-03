@@ -1,4 +1,4 @@
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from '../features/auth/AuthProvider'
 import {
   GuestOnlyRoute,
@@ -26,6 +26,10 @@ export function AppRoutes() {
         <Route path="/history" element={<HistoryPage />} />
         <Route path="/history/summary" element={<WalkingAnalysisPage />} />
         <Route path="/walking-route" element={<WalkingRoutePage />} />
+        <Route
+          path="/transit-route"
+          element={<Navigate to="/walking-route?mode=transit" replace />}
+        />
         <Route path="/sessions/:sessionId" element={<SessionDetailPage />} />
         <Route path="/developer-tools" element={<DeveloperToolsPage />} />
       </Route>

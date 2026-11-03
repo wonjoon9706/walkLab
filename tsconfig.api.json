@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["api/**/*.ts", "src/domain/walkingRoute.ts", "src/domain/walkingSpeedModel.ts", "src/services/routing/kakaoWalkingRouteParser.ts"]
+  "include": ["api/**/*.ts", "src/domain/walkingRoute.ts", "src/domain/walkingSpeedModel.ts", "src/domain/transitRoute.ts", "src/services/routing/kakaoWalkingRouteParser.ts", "src/services/routing/tmapTransitRouteParser.ts"]
 }

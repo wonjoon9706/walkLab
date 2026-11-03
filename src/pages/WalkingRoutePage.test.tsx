@@ -6,6 +6,8 @@ import type { PlaceSearchResult } from '../domain/walkingRoute'
 const {
   getCurrentLocationMock,
   getWalkingRouteMock,
+  getTransitRoutesMock,
+  reverseGeocodeMock,
   loadSpeedModelMock,
   navigationStartMock,
   navigationStopMock,
@@ -18,6 +20,8 @@ const {
 } = vi.hoisted(() => ({
   getCurrentLocationMock: vi.fn(),
   getWalkingRouteMock: vi.fn(),
+  getTransitRoutesMock: vi.fn(),
+  reverseGeocodeMock: vi.fn(),
   loadSpeedModelMock: vi.fn(),
   navigationStartMock: vi.fn(),
   navigationStopMock: vi.fn(),
@@ -79,6 +83,22 @@ const destination: PlaceSearchResult = {
   coordinate: { latitude: 37.5759, longitude: 126.9768 },
 }
 
+const transitResult = {
+  provider: 'tmap-transit',
+  requestedAt: '2026-11-02T00:00:00.000Z',
+  itineraries: [{
+    id: 'transit-1', totalDurationSeconds: 900,
+    totalWalkDurationSeconds: 200, totalWalkDistanceM: 250,
+    totalDistanceM: 4000, transferCount: 0, fareKrw: 1500,
+    legs: [{
+      mode: 'BUS', distanceM: 3750, durationSeconds: 700,
+      routeName: '간선:100', routeColor: '0068B7',
+      startName: '서울역', endName: '광화문',
+      coordinates: [manualOrigin.coordinate, destination.coordinate],
+    }],
+  }],
+} as const
+
 vi.mock('../features/auth/authContext', () => ({
   useAuth: () => ({ user: { id: 'user-1', email: 'user@example.com' } }),
 }))
@@ -118,11 +138,29 @@ vi.mock('../services/routing/walkingRouteClient', () => ({
   walkingRouteClient: { getWalkingRoute: getWalkingRouteMock },
 }))
 
+vi.mock('../services/routing/transitRouteClient', () => ({
+  transitRouteClient: { getTransitRoutes: getTransitRoutesMock },
+}))
+
+vi.mock('../services/places/kakaoReverseGeocode', () => ({
+  reverseGeocodeKakaoCoordinate: reverseGeocodeMock,
+}))
+
+vi.mock('../features/map/TransitRouteMap', () => ({
+  TransitRouteMap: () => <div>대중교통 경로 지도</div>,
+}))
+
 vi.mock('../features/map/WalkingRouteMap', () => ({
   WalkingRouteMap: ({
+    coordinates = [],
+    start,
+    destination: mapDestination,
     isStartSelectionEnabled,
     onSelectStart,
   }: {
+    coordinates?: Array<{ latitude: number; longitude: number }>
+    start: { latitude: number; longitude: number } | null
+    destination?: { latitude: number; longitude: number } | null
     isStartSelectionEnabled?: boolean
     onSelectStart?: (coordinate: {
       latitude: number
@@ -130,7 +168,9 @@ vi.mock('../features/map/WalkingRouteMap', () => ({
     }) => void
   }) => (
     <div>
-      도보 경로 지도
+      {coordinates.length >= 2 ? '도보 경로 지도' : '위치 미리보기 지도'}
+      {start !== null && <span>출발지 마커</span>}
+      {mapDestination != null && <span>목적지 마커</span>}
       {isStartSelectionEnabled && (
         <button
           type="button"
@@ -149,18 +189,26 @@ vi.mock('../features/places/PlaceSearchPanel', () => ({
   PlaceSearchPanel: ({
     idPrefix,
     title,
+    selectedPlace,
     onSelect,
     children,
     closedActions,
   }: {
     idPrefix: string
     title: string
+    selectedPlace: PlaceSearchResult | null
     onSelect: (place: PlaceSearchResult) => void
     children?: React.ReactNode
     closedActions?: (openSearch: () => void) => React.ReactNode
   }) => (
     <section>
       <h2>{title}</h2>
+      {selectedPlace !== null && (
+        <p>
+          <strong>{selectedPlace.name}</strong>
+          <span>{selectedPlace.roadAddress ?? selectedPlace.address}</span>
+        </p>
+      )}
       {children}
       {closedActions?.(vi.fn())}
       {idPrefix === 'origin-place' ? (
@@ -182,6 +230,8 @@ vi.mock('../features/places/PlaceSearchPanel', () => ({
 }))
 
 beforeEach(() => {
+  getTransitRoutesMock.mockReset()
+  reverseGeocodeMock.mockReset()
   navigationStartMock.mockReset()
   navigationStopMock.mockReset()
   subscribeGpsMock.mockReset()
@@ -226,6 +276,11 @@ beforeEach(() => {
     provider: 'kakao-walking-route',
     requestedAt: '2026-10-30T00:00:00.000Z',
   })
+  getTransitRoutesMock.mockResolvedValue(transitResult)
+  reverseGeocodeMock.mockResolvedValue({
+    roadAddress: '서울 용산구 한강대로 405',
+    address: '서울 용산구 동자동',
+  })
 })
 
 describe('WalkingRoutePage 출발지 선택', () => {
@@ -251,6 +306,11 @@ describe('WalkingRoutePage 출발지 선택', () => {
     expect(
       await screen.findByText(/GPS 확인됨/),
     ).toBeInTheDocument()
+    expect(screen.getByText('위치 미리보기 지도')).toBeInTheDocument()
+    expect(screen.getByText('출발지 마커')).toBeInTheDocument()
+    expect(
+      await screen.findByText('서울 용산구 한강대로 405'),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: '현재 위치 사용' }),
     ).toBeInTheDocument()
@@ -270,6 +330,8 @@ describe('WalkingRoutePage 출발지 선택', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
+    expect(screen.getByText('위치 미리보기 지도')).toBeInTheDocument()
+    expect(screen.getByText('출발지 마커')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
 
     await waitFor(() => {
@@ -287,6 +349,35 @@ describe('WalkingRoutePage 출발지 선택', () => {
     expect(screen.getByText('오전 9:12')).toBeInTheDocument()
     expect(screen.queryByText('예상시간 상세')).toBeNull()
     expect(screen.queryByText('기본속도 기준')).toBeNull()
+    expect(screen.queryByText('위치 미리보기 지도')).toBeNull()
+  })
+
+  it('GPS 정확도가 낮아도 지도와 정확도 경고를 함께 표시한다', async () => {
+    getCurrentLocationMock.mockResolvedValueOnce({
+      coordinate: { latitude: 37.5, longitude: 127.1 },
+      accuracyM: 320,
+      measuredAt: '2026-11-02T00:00:00.000Z',
+    })
+
+    render(<MemoryRouter><WalkingRoutePage /></MemoryRouter>)
+
+    expect(await screen.findByText('위치 미리보기 지도')).toBeInTheDocument()
+    expect(screen.getByText('출발지 마커')).toBeInTheDocument()
+    expect(screen.getByText(/GPS 오차 범위가 큽니다/)).toBeInTheDocument()
+  })
+
+  it('현재 위치가 없어도 선택한 목적지를 위치 미리보기로 표시한다', async () => {
+    render(
+      <MemoryRouter>
+        <WalkingRoutePage />
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+
+    expect(screen.getByText('위치 미리보기 지도')).toBeInTheDocument()
+    expect(screen.queryByText('출발지 마커')).toBeNull()
+    expect(screen.getByText('목적지 마커')).toBeInTheDocument()
   })
 
   it('늦게 도착한 초기 GPS 응답이 검색 출발지를 덮어쓰지 않는다', async () => {
@@ -355,6 +446,30 @@ describe('WalkingRoutePage 출발지 선택', () => {
         destination: destination.coordinate,
       })
     })
+    expect(
+      await screen.findByText('서울 용산구 한강대로 405'),
+    ).toBeInTheDocument()
+  })
+
+  it('지도 좌표의 주소 조회에 실패해도 선택한 좌표와 대체 문구를 유지한다', async () => {
+    getCurrentLocationMock.mockResolvedValueOnce({
+      coordinate: { latitude: 37.5, longitude: 127.1 },
+      accuracyM: 10,
+      measuredAt: '2026-11-02T00:00:00.000Z',
+    })
+    reverseGeocodeMock
+      .mockResolvedValueOnce({ roadAddress: null, address: '서울 광진구 화양동' })
+      .mockRejectedValueOnce(new Error('reverse geocode failed'))
+    render(<MemoryRouter><WalkingRoutePage /></MemoryRouter>)
+    await screen.findByText('위치 미리보기 지도')
+
+    fireEvent.click(screen.getByRole('button', { name: '지도에서 직접 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '출발지 설정' }))
+
+    expect(
+      await screen.findByText('지도에서 선택한 위치'),
+    ).toBeInTheDocument()
+    expect(getWalkingRouteMock).not.toHaveBeenCalled()
   })
 
   it('요청 출발지와 카카오 경로 첫 점 차이가 크면 안내한다', async () => {
@@ -380,6 +495,7 @@ describe('WalkingRoutePage 출발지 선택', () => {
     fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
     fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
 
+    fireEvent.click(await screen.findByRole('button', { name: '지도 보기' }))
     expect(
       await screen.findByText(/떨어진 보행 접근점에서 시작합니다/),
     ).toBeInTheDocument()
@@ -622,6 +738,73 @@ describe('WalkingRoutePage 출발지 선택', () => {
     deferred.resolve(true)
 
     await waitFor(() => expect(stopMeasurementMock).toHaveBeenCalledOnce())
+  })
+
+  it('공통 좌표와 대중교통 결과를 탭 전환 동안 유지하고 좌표 변경 시 무효화한다', async () => {
+    render(<MemoryRouter><WalkingRoutePage /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+
+    fireEvent.click(screen.getByRole('tab', { name: '대중교통' }))
+    expect(screen.getByRole('heading', { name: '출발지' })).toBeInTheDocument()
+    expect(getTransitRoutesMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '대중교통 경로 검색' }))
+    expect(await screen.findByText('추천 경로')).toBeInTheDocument()
+    expect(screen.queryByText('대중교통 경로 지도')).toBeNull()
+    expect(getTransitRoutesMock).toHaveBeenCalledOnce()
+    expect(getTransitRoutesMock).toHaveBeenCalledWith({
+      start: manualOrigin.coordinate,
+      destination: destination.coordinate,
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '지도 보기' }))
+    expect(screen.getByText('대중교통 경로 지도')).toBeInTheDocument()
+    expect(getTransitRoutesMock).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole('tab', { name: '도보' }))
+    fireEvent.click(screen.getByRole('tab', { name: '대중교통' }))
+    expect(screen.getByText('대중교통 경로 지도')).toBeInTheDocument()
+    expect(getTransitRoutesMock).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole('button', { name: '시청역 출발 선택' }))
+    expect(screen.queryByText('대중교통 경로 지도')).toBeNull()
+    expect(screen.getByText('위치 미리보기 지도')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '대중교통 경로 검색' })).toBeInTheDocument()
+  })
+
+  it('도보 경로 지도는 결과에서 사용자가 펼칠 때만 표시한다', async () => {
+    render(<MemoryRouter><WalkingRoutePage /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+
+    const mapButton = await screen.findByRole('button', { name: '지도 보기' })
+    expect(screen.queryByText('도보 경로 지도')).toBeNull()
+
+    fireEvent.click(mapButton)
+    expect(screen.getByText('도보 경로 지도')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '지도 접기' }))
+    expect(screen.queryByText('도보 경로 지도')).toBeNull()
+  })
+
+  it('좌표 변경 전 대중교통 응답과 중복 클릭을 현재 결과로 반영하지 않는다', async () => {
+    let resolveRequest: (value: typeof transitResult) => void = vi.fn()
+    getTransitRoutesMock.mockReturnValueOnce(
+      new Promise((resolve) => { resolveRequest = resolve }),
+    )
+    render(<MemoryRouter><WalkingRoutePage /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
+    fireEvent.click(screen.getByRole('tab', { name: '대중교통' }))
+
+    const searchButton = screen.getByRole('button', { name: '대중교통 경로 검색' })
+    fireEvent.click(searchButton)
+    fireEvent.click(searchButton)
+    expect(getTransitRoutesMock).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole('button', { name: '시청역 출발 선택' }))
+    resolveRequest(transitResult)
+
+    await waitFor(() => expect(screen.queryByText('대중교통 경로 지도')).toBeNull())
   })
 })
 

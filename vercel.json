@@ -13,6 +13,10 @@
       "destination": "/index.html"
     },
     {
+      "source": "/transit-route",
+      "destination": "/index.html"
+    },
+    {
       "source": "/sessions/:sessionId",
       "destination": "/index.html"
     }

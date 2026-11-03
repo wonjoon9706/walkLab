@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type {
   GeoCoordinate,
   PlaceSearchResult,
   WalkingRoute,
 } from '../domain/walkingRoute'
 import { WalkingRouteError } from '../domain/walkingRoute'
+import { publicEnvironment } from '../app/env'
 import type { WalkingSpeedModel } from '../domain/walkingSpeedModel'
 import { useAuth } from '../features/auth/authContext'
 import { WalkingRouteMap } from '../features/map/WalkingRouteMap'
 import { useMeasurement } from '../features/measurement/measurementContext'
 import { useLiveNavigation } from '../features/navigation/useLiveNavigation'
 import { PlaceSearchPanel } from '../features/places/PlaceSearchPanel'
+import { TransitRoutePanel } from '../features/transit/TransitRoutePanel'
 import { useSync } from '../features/sync/syncContext'
 import {
   CurrentLocationError,
@@ -23,6 +25,7 @@ import {
   selectWalkingSpeedProfile,
 } from '../services/routing/walkingEta'
 import { walkingRouteClient } from '../services/routing/walkingRouteClient'
+import { reverseGeocodeKakaoCoordinate } from '../services/places/kakaoReverseGeocode'
 import {
   calculateCoordinateGapM,
   calculateWalkingRouteEndpointGaps,
@@ -149,6 +152,8 @@ function getRouteErrorMessage(error: unknown): string {
 }
 
 export function WalkingRoutePage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const activeMode = searchParams.get('mode') === 'transit' ? 'transit' : 'walking'
   const { user } = useAuth()
   const measurement = useMeasurement()
   const sync = useSync()
@@ -157,6 +162,7 @@ export function WalkingRoutePage() {
   const stopNavigationOnUnmount = navigation.stop
   const routeRequestIdRef = useRef(0)
   const locationRequestIdRef = useRef(0)
+  const reverseGeocodeRequestIdRef = useRef(0)
   const originSourceRef = useRef<OriginSource>('current_location')
   const linkedMeasurementRef = useRef(false)
   const guidanceStartingRef = useRef(false)
@@ -171,6 +177,8 @@ export function WalkingRoutePage() {
     useState<GeoCoordinate | null>(null)
   const [currentAccuracyM, setCurrentAccuracyM] = useState<number | null>(null)
   const [currentLocationMeasuredAt, setCurrentLocationMeasuredAt] =
+    useState<string | null>(null)
+  const [currentLocationAddress, setCurrentLocationAddress] =
     useState<string | null>(null)
   const [locationStatus, setLocationStatus] =
     useState<LoadingStatus>('loading')
@@ -191,10 +199,26 @@ export function WalkingRoutePage() {
     useState<GuidanceResult | null>(null)
   const [isMapOriginSelectionEnabled, setIsMapOriginSelectionEnabled] =
     useState(false)
+  const [isWalkingMapVisible, setIsWalkingMapVisible] = useState(false)
+  const [isTransitMapVisible, setIsTransitMapVisible] = useState(false)
+  const [hasTransitResult, setHasTransitResult] = useState(false)
   const displayedRoute =
     navigation.isActive && navigation.route !== null
       ? navigation.route
       : route
+  const sharedRouteKey = `${origin?.latitude ?? 'none'}:${origin?.longitude ?? 'none'}:${destination?.coordinate.latitude ?? 'none'}:${destination?.coordinate.longitude ?? 'none'}`
+  const previewStart = origin
+  const previewDestination = destination?.coordinate ?? null
+  const isWalkingRouteMapVisible =
+    activeMode === 'walking' && isWalkingMapVisible && route !== null
+  const shouldShowPositionPreview =
+    !navigation.isActive &&
+    !isMapOriginSelectionEnabled &&
+    !isWalkingRouteMapVisible &&
+    !(activeMode === 'transit' && isTransitMapVisible) &&
+    !(activeMode === 'walking' && route !== null) &&
+    !(activeMode === 'transit' && hasTransitResult) &&
+    (previewStart !== null || previewDestination !== null)
 
   const baselineSpeed = useMemo(
     () => selectWalkingSpeedProfile(speedModel),
@@ -228,6 +252,26 @@ export function WalkingRoutePage() {
     if (currentLocation === null || origin === null) return null
     return calculateCoordinateGapM(currentLocation, origin)
   }, [currentLocation, origin])
+
+  async function loadCurrentLocationAddress(coordinate: GeoCoordinate) {
+    const requestId = reverseGeocodeRequestIdRef.current + 1
+    reverseGeocodeRequestIdRef.current = requestId
+    setCurrentLocationAddress(null)
+    try {
+      const result = await reverseGeocodeKakaoCoordinate(
+        coordinate,
+        publicEnvironment.kakaoMapJavaScriptKey,
+      )
+      if (
+        reverseGeocodeRequestIdRef.current === requestId &&
+        originSourceRef.current === 'current_location'
+      ) {
+        setCurrentLocationAddress(result.roadAddress ?? result.address)
+      }
+    } catch {
+      // 주소 조회 실패는 좌표 선택과 경로 탐색을 막지 않는다.
+    }
+  }
 
   useEffect(() => {
     isMountedRef.current = true
@@ -280,16 +324,18 @@ export function WalkingRoutePage() {
       setCurrentLocation(coordinate)
       setCurrentAccuracyM(fix.accuracyM)
       setCurrentLocationMeasuredAt(fix.measuredAt)
+      void loadCurrentLocationAddress(coordinate)
       setOrigin(coordinate)
       originSourceRef.current = 'current_location'
       setOriginSource('current_location')
       setOriginPlace(null)
       setIsMapOriginSelectionEnabled(false)
+      setIsWalkingMapVisible(false)
       setLocationStatus('ready')
       setRoute(null)
       setRouteError(null)
       setRouteStatus('idle')
-      if (destination !== null) {
+      if (destination !== null && activeMode === 'walking') {
         await requestRoute(coordinate, destination)
       }
     } catch (error) {
@@ -315,6 +361,7 @@ export function WalkingRoutePage() {
           setCurrentLocation(coordinate)
           setCurrentAccuracyM(fix.accuracyM)
           setCurrentLocationMeasuredAt(fix.measuredAt)
+          void loadCurrentLocationAddress(coordinate)
           setOrigin(coordinate)
           setOriginSource('current_location')
           setLocationStatus('ready')
@@ -366,44 +413,76 @@ export function WalkingRoutePage() {
       void stopNavigation()
     }
     locationRequestIdRef.current += 1
+    reverseGeocodeRequestIdRef.current += 1
     routeRequestIdRef.current += 1
     originSourceRef.current = 'searched_place'
     setOrigin(place.coordinate)
     setOriginSource('searched_place')
     setOriginPlace(place)
     setIsMapOriginSelectionEnabled(false)
+    setIsWalkingMapVisible(false)
     setLocationError(null)
     setRoute(null)
     setRouteError(null)
     setRouteStatus('idle')
-    if (destination !== null) {
+    if (destination !== null && activeMode === 'walking') {
       void requestRoute(place.coordinate, destination)
     }
   }
 
-  function selectMapOrigin(coordinate: GeoCoordinate) {
+  async function selectMapOrigin(coordinate: GeoCoordinate) {
     if (navigation.isActive || linkedMeasurementRef.current) return
 
     const mapOrigin: PlaceSearchResult = {
       id: `map-${coordinate.latitude}-${coordinate.longitude}`,
       name: '지도에서 지정한 위치',
-      address: `위도 ${coordinate.latitude.toFixed(6)}, 경도 ${coordinate.longitude.toFixed(6)}`,
+      address: '주소 확인 중',
       roadAddress: null,
       coordinate,
     }
     locationRequestIdRef.current += 1
+    const addressRequestId = reverseGeocodeRequestIdRef.current + 1
+    reverseGeocodeRequestIdRef.current = addressRequestId
     routeRequestIdRef.current += 1
     originSourceRef.current = 'map'
     setOrigin(coordinate)
     setOriginSource('map')
     setOriginPlace(mapOrigin)
     setIsMapOriginSelectionEnabled(false)
+    setIsWalkingMapVisible(false)
     setLocationError(null)
     setRoute(null)
     setRouteError(null)
     setRouteStatus('idle')
-    if (destination !== null) {
+    if (destination !== null && activeMode === 'walking') {
       void requestRoute(coordinate, destination)
+    }
+
+    try {
+      const address = await reverseGeocodeKakaoCoordinate(
+        coordinate,
+        publicEnvironment.kakaoMapJavaScriptKey,
+      )
+      if (
+        reverseGeocodeRequestIdRef.current === addressRequestId &&
+        originSourceRef.current === 'map'
+      ) {
+        setOriginPlace({
+          ...mapOrigin,
+          roadAddress: address.roadAddress,
+          address: address.address ?? '지도에서 선택한 위치',
+        })
+      }
+    } catch {
+      if (
+        reverseGeocodeRequestIdRef.current === addressRequestId &&
+        originSourceRef.current === 'map'
+      ) {
+        setOriginPlace({
+          ...mapOrigin,
+          address: '지도에서 선택한 위치',
+        })
+      }
     }
   }
 
@@ -412,6 +491,7 @@ export function WalkingRoutePage() {
       void stopNavigation()
     }
     setDestination(place)
+    setIsWalkingMapVisible(false)
     setRoute(null)
     setRouteError(null)
 
@@ -422,7 +502,21 @@ export function WalkingRoutePage() {
       )
       return
     }
-    void requestRoute(origin, place)
+    if (activeMode === 'walking') void requestRoute(origin, place)
+  }
+
+  function changeMode(nextMode: 'walking' | 'transit') {
+    if (navigation.isActive) return
+    setIsMapOriginSelectionEnabled(false)
+    setSearchParams(nextMode === 'transit' ? { mode: 'transit' } : {})
+    if (
+      nextMode === 'walking' &&
+      route === null &&
+      origin !== null &&
+      destination !== null
+    ) {
+      void requestRoute(origin, destination)
+    }
   }
 
   async function startNavigation() {
@@ -551,7 +645,7 @@ export function WalkingRoutePage() {
   return (
     <main className="page-shell walking-route-page">
       <p className="eyebrow">WalkLab</p>
-      <h1>도보 길찾기</h1>
+      <h1>길찾기</h1>
       {!navigation.isActive && (
         <>
           <div className="route-search-panels">
@@ -599,30 +693,27 @@ export function WalkingRoutePage() {
               {originSource === 'current_location' && (
                 <p className="selected-place-summary">
                   <strong>현재 위치</strong>
-                  <br />
-                  <span>
-                    {locationStatus === 'ready'
-                      ? `GPS 확인됨${
-                          currentAccuracyM === null
-                            ? ''
-                            : ` · 정확도 약 ${Math.round(currentAccuracyM)}m`
-                        }${
-                          formatLocationMeasuredAt(currentLocationMeasuredAt) === null
-                            ? ''
-                            : ` · ${formatLocationMeasuredAt(currentLocationMeasuredAt)} 측정`
-                        }`
-                      : locationStatus === 'loading'
-                        ? 'GPS 확인 중'
-                        : 'GPS 확인 필요'}
-                  </span>
+                  {currentLocationAddress !== null && (
+                    <><br /><span>{currentLocationAddress}</span></>
+                  )}
                 </p>
+              )}
+              {originSource === 'current_location' && (
+                <details className="location-details">
+                  <summary>GPS 정보</summary>
+                  <p className="page-description">
+                    {locationStatus === 'ready'
+                      ? `GPS 확인됨${currentAccuracyM === null ? '' : ` · 정확도 약 ${Math.round(currentAccuracyM)}m`}${formatLocationMeasuredAt(currentLocationMeasuredAt) === null ? '' : ` · ${formatLocationMeasuredAt(currentLocationMeasuredAt)} 측정`}`
+                      : locationStatus === 'loading' ? 'GPS 확인 중' : 'GPS 확인 필요'}
+                  </p>
+                </details>
               )}
               {originSource === 'current_location' &&
                 currentAccuracyM !== null &&
                 currentAccuracyM > GPS_ACCURACY_WARNING_M && (
                   <p className="auth-message warning-card">
-                    GPS 오차 범위가 큽니다. 다시 확인하거나 장소 검색·지도
-                    선택으로 출발지를 지정해 주세요.
+                    GPS 오차 범위가 큽니다. 이 위치를 정확한 출발지로 단정하지
+                    말고, 필요하면 장소 검색이나 지도 선택으로 지정해 주세요.
                   </p>
                 )}
               {originSource !== 'current_location' &&
@@ -650,7 +741,38 @@ export function WalkingRoutePage() {
         </>
       )}
 
-      {origin !== null && (
+      {!navigation.isActive && (
+        <div className="route-mode-tabs" role="tablist" aria-label="길찾기 종류">
+          <button type="button" role="tab" aria-selected={activeMode === 'transit'} onClick={() => changeMode('transit')}>대중교통</button>
+          <button type="button" role="tab" aria-selected={activeMode === 'walking'} onClick={() => changeMode('walking')}>도보</button>
+        </div>
+      )}
+
+      {!navigation.isActive && activeMode === 'walking' && origin !== null && destination !== null && (
+        <>
+          <button type="button" className="primary-action" disabled={routeStatus === 'loading'} onClick={() => void requestRoute(origin, destination)}>
+            {routeStatus === 'loading' ? '도보 경로 검색 중' : '도보 경로 검색'}
+          </button>
+          {routeError !== null && <p className="error-message auth-message" role="alert">{routeError}</p>}
+        </>
+      )}
+
+      {shouldShowPositionPreview && (
+        <section className="status-card map-card route-map-card location-preview-card" aria-labelledby="location-preview-title">
+          <div className="location-preview-heading">
+            <h2 id="location-preview-title">위치 미리보기</h2>
+            <span>선택한 장소 확인</span>
+          </div>
+          <WalkingRouteMap
+            start={previewStart}
+            destination={previewDestination}
+            currentPosition={currentLocation}
+            currentAccuracyM={currentAccuracyM}
+          />
+        </section>
+      )}
+
+      {(isMapOriginSelectionEnabled || navigation.isActive || isWalkingRouteMapVisible) && origin !== null && (
         <section className="status-card map-card route-map-card" aria-labelledby="route-map-title">
           <h2 id="route-map-title">
             {navigation.isActive ? `${destination?.name ?? '목적지'} 안내` : '지도'}
@@ -674,7 +796,7 @@ export function WalkingRoutePage() {
               setIsMapOriginSelectionEnabled(false)
             }
           />
-          {routeEndpointGaps !== null &&
+          {activeMode === 'walking' && routeEndpointGaps !== null &&
             routeEndpointGaps.startGapM > ROUTE_START_GAP_WARNING_M && (
               <p className="auth-message warning-card" role="status">
                 카카오 도보 경로는 지정한 출발지에서 약{' '}
@@ -683,16 +805,10 @@ export function WalkingRoutePage() {
                 주세요.
               </p>
             )}
-          {routeStatus === 'loading' && (
-            <p role="status">도보 경로를 조회하는 중입니다.</p>
-          )}
-          {routeError !== null && (
-            <p className="error-message auth-message" role="alert">{routeError}</p>
-          )}
         </section>
       )}
 
-      {!navigation.isActive && route !== null && eta !== null && destination !== null && (
+      {!navigation.isActive && activeMode === 'walking' && route !== null && eta !== null && destination !== null && (
         <section className="status-card eta-primary-card" aria-labelledby="eta-title">
           <p className="eyebrow">{destination.name}까지</p>
           <p className="eta-label">예상 소요시간</p>
@@ -713,7 +829,14 @@ export function WalkingRoutePage() {
                 )}
               </dd>
             </div>
+            <div>
+              <dt>기본 예상시간</dt>
+              <dd>{formatDuration(eta.defaultDurationSeconds)}</dd>
+            </div>
           </dl>
+          <button type="button" className="secondary-button route-map-toggle" onClick={() => setIsWalkingMapVisible((visible) => !visible)}>
+            {isWalkingMapVisible ? '지도 접기' : '지도 보기'}
+          </button>
           <button
             type="button"
             className="primary-action"
@@ -731,6 +854,18 @@ export function WalkingRoutePage() {
             </p>
           )}
         </section>
+      )}
+
+      {origin !== null && destination !== null && (
+        <TransitRoutePanel
+          key={sharedRouteKey}
+          active={!navigation.isActive && activeMode === 'transit' && !isMapOriginSelectionEnabled}
+          origin={origin}
+          destination={destination}
+          speedModel={speedModel}
+          onMapVisibilityChange={setIsTransitMapVisible}
+          onResultAvailabilityChange={setHasTransitResult}
+        />
       )}
 
       {!navigation.isActive && navigation.status === 'error' && (
