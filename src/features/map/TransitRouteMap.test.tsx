@@ -60,17 +60,17 @@ const itinerary: TransitItinerary = {
   legs: [
     {
       mode: 'WALK', distanceM: 0, durationSeconds: 0,
-      routeName: null, routeColor: null, startName: 'A', endName: 'A',
+      routeName: null, routeColor: null, routeType: null, startName: 'A', endName: 'A',
       coordinates: [{ latitude: 37.5, longitude: 127.1 }, { latitude: 37.5001, longitude: 127.1001 }],
     },
     {
       mode: 'WALK', distanceM: 200, durationSeconds: 200,
-      routeName: null, routeColor: null, startName: 'A', endName: 'B',
+      routeName: null, routeColor: null, routeType: null, startName: 'A', endName: 'B',
       coordinates: [{ latitude: 37.5, longitude: 127.1 }, { latitude: 37.51, longitude: 127.11 }],
     },
     {
       mode: 'BUS', distanceM: 3800, durationSeconds: 700,
-      routeName: '100', routeColor: '0068B7', startName: 'B', endName: 'C',
+      routeName: '100', routeColor: '0068B7', routeType: 11, startName: 'B', endName: 'C',
       coordinates: [{ latitude: 37.51, longitude: 127.11 }, { latitude: 37.6, longitude: 127.2 }],
     },
   ],

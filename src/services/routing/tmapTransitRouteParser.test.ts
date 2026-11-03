@@ -23,6 +23,7 @@ const response = {
           },
           {
             mode: 'BUS',
+            type: 11,
             sectionTime: 600,
             distance: 4000,
             route: '간선:100',
@@ -62,6 +63,7 @@ describe('TMAP 대중교통 응답 파서', () => {
     })
     expect(result.itineraries[0].legs[1]).toMatchObject({
       mode: 'BUS',
+      routeType: 11,
       routeName: '간선:100',
       coordinates: [
         { latitude: 37.501, longitude: 127.101 },

@@ -64,9 +64,9 @@ describe('대중교통 개인화 ETA', () => {
       totalWalkDurationSeconds: 472,
       totalWalkDistanceM: 444,
       legs: [
-        { mode: 'WALK', distanceM: 200, durationSeconds: 248, routeName: null, routeColor: null, startName: '출발', endName: '정류장', coordinates: [] },
-        { mode: 'BUS', distanceM: 4000, durationSeconds: 3413, routeName: '직행좌석', routeColor: null, startName: '정류장', endName: '하차', coordinates: [] },
-        { mode: 'WALK', distanceM: 244, durationSeconds: 224, routeName: null, routeColor: null, startName: '하차', endName: '도착', coordinates: [] },
+        { mode: 'WALK', distanceM: 200, durationSeconds: 248, routeName: null, routeColor: null, routeType: null, startName: '출발', endName: '정류장', coordinates: [] },
+        { mode: 'BUS', distanceM: 4000, durationSeconds: 3413, routeName: '직행좌석', routeColor: null, routeType: 4, startName: '정류장', endName: '하차', coordinates: [] },
+        { mode: 'WALK', distanceM: 244, durationSeconds: 224, routeName: null, routeColor: null, routeType: null, startName: '하차', endName: '도착', coordinates: [] },
       ],
     }
     const eta = calculateTransitEta(

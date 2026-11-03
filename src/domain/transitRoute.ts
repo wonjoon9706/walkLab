@@ -15,6 +15,7 @@ export interface TransitRouteLeg {
   durationSeconds: number
   routeName: string | null
   routeColor: string | null
+  routeType: number | null
   startName: string
   endName: string
   coordinates: GeoCoordinate[]

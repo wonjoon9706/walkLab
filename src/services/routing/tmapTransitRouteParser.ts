@@ -31,6 +31,11 @@ function readNonNegativeNumber(value: unknown): number | null {
   return parsed !== null && parsed >= 0 ? parsed : null
 }
 
+function readNonNegativeInteger(value: unknown): number | null {
+  const parsed = readNonNegativeNumber(value)
+  return parsed !== null && Number.isInteger(parsed) ? parsed : null
+}
+
 function parseCoordinate(longitudeValue: unknown, latitudeValue: unknown) {
   const longitude = readFiniteNumber(longitudeValue)
   const latitude = readFiniteNumber(latitudeValue)
@@ -120,6 +125,7 @@ function parseLeg(value: unknown): TransitRouteLeg | null {
     routeName: typeof value.route === 'string' ? value.route : null,
     routeColor:
       typeof value.routeColor === 'string' ? value.routeColor : null,
+    routeType: readNonNegativeInteger(value.type),
     startName: readLocationName(value.start, '출발지'),
     endName: readLocationName(value.end, '도착지'),
     coordinates: parseLegCoordinates(value),

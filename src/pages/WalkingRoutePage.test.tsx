@@ -89,11 +89,18 @@ const transitResult = {
   itineraries: [{
     id: 'transit-1', totalDurationSeconds: 900,
     totalWalkDurationSeconds: 200, totalWalkDistanceM: 250,
-    totalDistanceM: 4000, transferCount: 0, fareKrw: 1500,
+    totalDistanceM: 4000, transferCount: 1, fareKrw: 1500,
     legs: [{
       mode: 'BUS', distanceM: 3750, durationSeconds: 700,
       routeName: '간선:100', routeColor: '0068B7',
+      routeType: 11,
       startName: '서울역', endName: '광화문',
+      coordinates: [manualOrigin.coordinate, destination.coordinate],
+    }, {
+      mode: 'SUBWAY', distanceM: 1000, durationSeconds: 200,
+      routeName: '수도권2호선', routeColor: '00A84D',
+      routeType: 2,
+      startName: '시청역', endName: '광화문역',
       coordinates: [manualOrigin.coordinate, destination.coordinate],
     }],
   }],
@@ -750,6 +757,18 @@ describe('WalkingRoutePage 출발지 선택', () => {
     expect(getTransitRoutesMock).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '대중교통 경로 검색' }))
     expect(await screen.findByText('추천 경로')).toBeInTheDocument()
+    expect(screen.getByText('총 1개 경로')).toBeInTheDocument()
+    expect(screen.getByText('선택됨')).toBeInTheDocument()
+    expect(screen.getAllByText('버스 · 간선 100')).toHaveLength(2)
+    expect(screen.getAllByText('지하철 · 2호선')).toHaveLength(2)
+    expect(screen.getByTitle('환승')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: '선택한 경로 상세' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: '상세 이동 경로' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('TMAP 원본 이동 순서')).toBeNull()
     expect(screen.queryByText('대중교통 경로 지도')).toBeNull()
     expect(getTransitRoutesMock).toHaveBeenCalledOnce()
     expect(getTransitRoutesMock).toHaveBeenCalledWith({
