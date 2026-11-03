@@ -43,6 +43,8 @@ describe('대중교통 개인화 ETA', () => {
     expect(eta.appliedDurationSeconds).toBe(850)
     expect(eta.providerDurationSeconds).toBe(1000)
     expect(eta.speedProfile.source).toBe('personalized')
+    expect(eta.personalizationScope).toBe('pure_walking_reference')
+    expect(eta.unverifiedWalkOverheadSeconds).toBeNull()
   })
 
   it('학습 데이터가 부족하면 TMAP 기본시간을 유지한다', () => {
@@ -55,6 +57,7 @@ describe('대중교통 개인화 ETA', () => {
     expect(eta.personalizedWalkDurationSeconds).toBeNull()
     expect(eta.appliedDurationSeconds).toBe(1000)
     expect(eta.speedProfile.source).toBe('default')
+    expect(eta.personalizationScope).toBe('provider_fallback')
   })
 
   it('TMAP 구간 합계와 개인화 보정 차이를 서로 분리한다', () => {

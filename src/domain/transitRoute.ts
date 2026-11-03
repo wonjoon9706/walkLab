@@ -9,16 +9,27 @@ export type TransitMode =
   | 'AIRPLANE'
   | 'FERRY'
 
+export interface TransitStop {
+  index: number
+  providerStopId: string
+  name: string
+  coordinate: GeoCoordinate
+}
+
 export interface TransitRouteLeg {
   mode: TransitMode
   distanceM: number
   durationSeconds: number
   routeName: string | null
+  routeId?: string | null
   routeColor: string | null
   routeType: number | null
   startName: string
   endName: string
+  startCoordinate?: GeoCoordinate | null
+  endCoordinate?: GeoCoordinate | null
   coordinates: GeoCoordinate[]
+  stops?: TransitStop[]
 }
 
 export interface TransitItinerary {
@@ -42,6 +53,8 @@ export interface TransitEtaEstimate {
   providerDurationSeconds: number
   appliedDurationSeconds: number
   personalizedWalkDurationSeconds: number | null
+  personalizationScope: 'pure_walking_reference' | 'provider_fallback'
+  unverifiedWalkOverheadSeconds: null
   arrivalAt: string
   speedProfile: WalkingSpeedProfile
 }

@@ -17,6 +17,7 @@ interface WalkingRouteMapProps {
   currentPosition?: GeoCoordinate | null
   currentAccuracyM?: number | null
   remainingCoordinates?: GeoCoordinate[]
+  comparisonCoordinates?: GeoCoordinate[]
   isStartSelectionEnabled?: boolean
   onSelectStart?: (coordinate: GeoCoordinate) => void
   onCancelStartSelection?: () => void
@@ -87,6 +88,7 @@ export function WalkingRouteMap({
   currentPosition = null,
   currentAccuracyM = null,
   remainingCoordinates,
+  comparisonCoordinates = EMPTY_COORDINATES,
   isStartSelectionEnabled = false,
   onSelectStart,
   onCancelStartSelection,
@@ -105,6 +107,10 @@ export function WalkingRouteMap({
   const stableRemainingCoordinates = useMemo(
     () => remainingCoordinates,
     [remainingCoordinates],
+  )
+  const stableComparisonCoordinates = useMemo(
+    () => comparisonCoordinates,
+    [comparisonCoordinates],
   )
   const isLiveMode = remainingCoordinates !== undefined
 
@@ -142,6 +148,9 @@ export function WalkingRouteMap({
         if (isDisposed) return
 
         const path = stableCoordinates.map((coordinate) =>
+          toKakaoPosition(maps, coordinate),
+        )
+        const comparisonPath = stableComparisonCoordinates.map((coordinate) =>
           toKakaoPosition(maps, coordinate),
         )
         const initialCoordinate = start ?? destination
@@ -336,6 +345,16 @@ export function WalkingRouteMap({
               isLiveMode ? 0.55 : 0.95,
           }))
         }
+        if (comparisonPath.length >= 2) {
+          overlays.push(new maps.Polyline({
+            map,
+            path: comparisonPath,
+            strokeWeight: 5,
+            strokeColor: '#d97706',
+            strokeOpacity: 0.9,
+            strokeStyle: 'shortdash',
+          }))
+        }
         if (start !== null) {
           overlays.push(new maps.Marker({
             map,
@@ -354,6 +373,7 @@ export function WalkingRouteMap({
         if (destination !== null && (start !== null || path.length >= 2)) {
           const bounds = new maps.LatLngBounds()
           path.forEach((position) => bounds.extend(position))
+          comparisonPath.forEach((position) => bounds.extend(position))
           if (start !== null) {
             bounds.extend(toKakaoPosition(maps, start))
           }
@@ -391,6 +411,7 @@ export function WalkingRouteMap({
     isStartSelectionEnabled,
     javaScriptKey,
     stableCoordinates,
+    stableComparisonCoordinates,
     start,
   ])
 
@@ -520,6 +541,9 @@ export function WalkingRouteMap({
       <p className="map-legend">
         {stableCoordinates.length >= 2 && (
           <span className="filtered-route-key">카카오 도보 경로</span>
+        )}
+        {stableComparisonCoordinates.length >= 2 && (
+          <span className="comparison-route-key">TMAP WALK 경로</span>
         )}
         {start !== null && <span className="start-point-key">출발지</span>}
         {destination !== null && <span className="end-point-key">목적지</span>}

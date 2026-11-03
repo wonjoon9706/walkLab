@@ -1,0 +1,105 @@
+import type { SubwayTrainType } from '../../domain/subwayArrival'
+
+const SEOUL_SUBWAY_ID_BY_TMAP_TYPE: Readonly<Record<number, string>> = {
+  1: '1001',
+  2: '1002',
+  3: '1003',
+  4: '1004',
+  5: '1005',
+  6: '1005',
+  7: '1007',
+  8: '1008',
+  9: '1009',
+  10: '1002',
+  11: '1002',
+  100: '1075',
+  101: '1065',
+  104: '1063',
+  108: '1067',
+  109: '1077',
+  113: '1092',
+  117: '1001',
+  118: '1001',
+  119: '1004',
+  120: '1009',
+  121: '1075',
+  122: '1063',
+  123: '1067',
+  124: '1065',
+  125: '1032',
+}
+
+const EXPRESS_TMAP_TYPES = new Set([117, 118, 119, 120, 121, 122, 123, 124])
+
+const SEOUL_SUBWAY_QUERY_ALIASES: Readonly<Record<string, string>> = {
+  // 서울시 API 실측 역명은 병기명을 포함해야 하며 짧은 이름은 INFO-200을 반환한다.
+  어린이대공원: '어린이대공원(세종대)',
+}
+
+const SEOUL_SUBWAY_STATION_NAME_ALIASES: Readonly<Record<string, string>> = {
+  // 서울시 API는 7호선 환승역을 총신대입구(이수)로, TMAP은 이수로 제공한다.
+  총신대입구: '이수',
+}
+
+export function getSeoulSubwayId(routeType: number): string | null {
+  return SEOUL_SUBWAY_ID_BY_TMAP_TYPE[routeType] ?? null
+}
+
+export function getTmapSubwayTrainType(
+  routeType: number,
+  routeName: string | null,
+): SubwayTrainType {
+  return EXPRESS_TMAP_TYPES.has(routeType) ||
+    routeName?.normalize('NFKC').includes('급행') === true ||
+    routeName?.normalize('NFKC').includes('특급') === true
+    ? 'express'
+    : 'normal'
+}
+
+export function normalizeSubwayStationName(value: string): string {
+  const normalized = value
+    .normalize('NFKC')
+    .trim()
+    .replace(/\([^)]*\)/g, '')
+    .replace(/역$/u, '')
+    .replace(/[\s.·ㆍ]/g, '')
+    .toLowerCase()
+  return SEOUL_SUBWAY_STATION_NAME_ALIASES[normalized] ?? normalized
+}
+
+export function getSeoulSubwayQueryName(value: string): string {
+  const normalized = value
+    .normalize('NFKC')
+    .trim()
+    .replace(/역$/u, '')
+  return SEOUL_SUBWAY_QUERY_ALIASES[normalized] ?? normalized
+}
+
+export function isSameSubwayStationName(
+  left: string,
+  right: string,
+): boolean {
+  return normalizeSubwayStationName(left) === normalizeSubwayStationName(right)
+}
+
+export function readDirectionStationName(trainLineName: string): string | null {
+  const match = trainLineName.match(/[-–—]\s*(.+?)\s*방면/u)
+  return match === null ? null : match[1].trim()
+}
+
+export function readDestinationName(trainLineName: string): string {
+  const directionSeparator = trainLineName.search(/[-–—]/u)
+  const destinationPart = directionSeparator < 0
+    ? trainLineName
+    : trainLineName.slice(0, directionSeparator)
+  return destinationPart.trim().replace(/(?:행|종착)$/u, '').trim()
+}
+
+export function normalizeSeoulTrainType(value: string): SubwayTrainType | null {
+  const normalized = value.normalize('NFKC').trim()
+  if (normalized.includes('급행') || normalized.includes('특급')) {
+    return 'express'
+  }
+  if (normalized === '' || normalized.includes('일반')) return 'normal'
+  return null
+}

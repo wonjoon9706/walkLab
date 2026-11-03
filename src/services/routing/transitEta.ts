@@ -65,6 +65,10 @@ export function calculateTransitEta(
     providerDurationSeconds: itinerary.totalDurationSeconds,
     appliedDurationSeconds,
     personalizedWalkDurationSeconds,
+    personalizationScope: personalizedWalkDurationSeconds === null
+      ? 'provider_fallback'
+      : 'pure_walking_reference',
+    unverifiedWalkOverheadSeconds: null,
     arrivalAt: new Date(
       calculatedAt.getTime() + appliedDurationSeconds * 1000,
     ).toISOString(),

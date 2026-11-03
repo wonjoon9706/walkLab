@@ -3,6 +3,7 @@ import type {
   TransitMode,
   TransitRouteLeg,
   TransitRouteResult,
+  TransitStop,
 } from '../../domain/transitRoute.js'
 import { TransitRouteError } from '../../domain/transitRoute.js'
 import type { GeoCoordinate } from '../../domain/walkingRoute.js'
@@ -110,6 +111,45 @@ function readLocationName(value: unknown, fallback: string): string {
     : fallback
 }
 
+function parseLocationCoordinate(value: unknown): GeoCoordinate | null {
+  if (!isRecord(value)) return null
+  return parseCoordinate(value.lon, value.lat)
+}
+
+function parseTransitStops(value: unknown): TransitStop[] {
+  if (!isRecord(value)) return []
+  const stationValues = Array.isArray(value.stationList)
+    ? value.stationList
+    : Array.isArray(value.stations)
+      ? value.stations
+      : []
+
+  return stationValues
+    .map((station): TransitStop | null => {
+      if (!isRecord(station)) return null
+      const index = readNonNegativeInteger(station.index)
+      const coordinate = parseCoordinate(station.lon, station.lat)
+      if (
+        index === null ||
+        coordinate === null ||
+        typeof station.stationID !== 'string' ||
+        station.stationID.trim().length === 0 ||
+        typeof station.stationName !== 'string' ||
+        station.stationName.trim().length === 0
+      ) {
+        return null
+      }
+      return {
+        index,
+        providerStopId: station.stationID,
+        name: station.stationName,
+        coordinate,
+      }
+    })
+    .filter((station): station is TransitStop => station !== null)
+    .sort((left, right) => left.index - right.index)
+}
+
 function parseLeg(value: unknown): TransitRouteLeg | null {
   if (!isRecord(value) || !TRANSIT_MODES.has(value.mode as TransitMode)) {
     return null
@@ -123,12 +163,16 @@ function parseLeg(value: unknown): TransitRouteLeg | null {
     distanceM,
     durationSeconds,
     routeName: typeof value.route === 'string' ? value.route : null,
+    routeId: typeof value.routeId === 'string' ? value.routeId : null,
     routeColor:
       typeof value.routeColor === 'string' ? value.routeColor : null,
     routeType: readNonNegativeInteger(value.type),
     startName: readLocationName(value.start, '출발지'),
     endName: readLocationName(value.end, '도착지'),
+    startCoordinate: parseLocationCoordinate(value.start),
+    endCoordinate: parseLocationCoordinate(value.end),
     coordinates: parseLegCoordinates(value),
+    stops: parseTransitStops(value.passStopList),
   }
 }
 

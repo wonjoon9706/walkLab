@@ -7,6 +7,8 @@ const {
   getCurrentLocationMock,
   getWalkingRouteMock,
   getTransitRoutesMock,
+  getBusArrivalMock,
+  getSubwayArrivalMock,
   reverseGeocodeMock,
   loadSpeedModelMock,
   navigationStartMock,
@@ -21,6 +23,8 @@ const {
   getCurrentLocationMock: vi.fn(),
   getWalkingRouteMock: vi.fn(),
   getTransitRoutesMock: vi.fn(),
+  getBusArrivalMock: vi.fn(),
+  getSubwayArrivalMock: vi.fn(),
   reverseGeocodeMock: vi.fn(),
   loadSpeedModelMock: vi.fn(),
   navigationStartMock: vi.fn(),
@@ -96,12 +100,33 @@ const transitResult = {
       routeType: 11,
       startName: '서울역', endName: '광화문',
       coordinates: [manualOrigin.coordinate, destination.coordinate],
+      stops: [{
+        index: 0,
+        providerStopId: 'TMAP-SEOUL',
+        name: '서울역',
+        coordinate: manualOrigin.coordinate,
+      }, {
+        index: 1,
+        providerStopId: 'TMAP-GWANGHWAMUN',
+        name: '광화문',
+        coordinate: destination.coordinate,
+      }],
     }, {
       mode: 'SUBWAY', distanceM: 1000, durationSeconds: 200,
       routeName: '수도권2호선', routeColor: '00A84D',
       routeType: 2,
       startName: '시청역', endName: '광화문역',
       coordinates: [manualOrigin.coordinate, destination.coordinate],
+      stops: [{
+        index: 0, providerStopId: 'TMAP-CITYHALL', name: '시청역',
+        coordinate: manualOrigin.coordinate,
+      }, {
+        index: 1, providerStopId: 'TMAP-EULJIRO', name: '을지로입구역',
+        coordinate: manualOrigin.coordinate,
+      }, {
+        index: 2, providerStopId: 'TMAP-GWANGHWAMUN-SUBWAY', name: '광화문역',
+        coordinate: destination.coordinate,
+      }],
     }],
   }],
 } as const
@@ -143,10 +168,21 @@ vi.mock('../services/learning/currentWalkingSpeedModel', () => ({
 
 vi.mock('../services/routing/walkingRouteClient', () => ({
   walkingRouteClient: { getWalkingRoute: getWalkingRouteMock },
+  getSupabaseAccessToken: vi.fn().mockResolvedValue('access-token'),
 }))
 
 vi.mock('../services/routing/transitRouteClient', () => ({
   transitRouteClient: { getTransitRoutes: getTransitRoutesMock },
+}))
+
+vi.mock('../services/transitArrival/busArrivalClient', () => ({
+  busArrivalClient: { getBusArrival: getBusArrivalMock },
+  createBusArrivalRequest: vi.fn(() => ({})),
+}))
+
+vi.mock('../services/transitArrival/subwayArrivalClient', () => ({
+  subwayArrivalClient: { getSubwayArrival: getSubwayArrivalMock },
+  createSubwayArrivalRequest: vi.fn(() => ({})),
 }))
 
 vi.mock('../services/places/kakaoReverseGeocode', () => ({
@@ -238,6 +274,8 @@ vi.mock('../features/places/PlaceSearchPanel', () => ({
 
 beforeEach(() => {
   getTransitRoutesMock.mockReset()
+  getBusArrivalMock.mockReset()
+  getSubwayArrivalMock.mockReset()
   reverseGeocodeMock.mockReset()
   navigationStartMock.mockReset()
   navigationStopMock.mockReset()
@@ -284,6 +322,38 @@ beforeEach(() => {
     requestedAt: '2026-10-30T00:00:00.000Z',
   })
   getTransitRoutesMock.mockResolvedValue(transitResult)
+  getBusArrivalMock.mockResolvedValue({
+    routeName: '간선 100',
+    stopName: '서울역',
+    stopId: 'TAGO-SEOUL',
+    arrivalSeconds: 360,
+    remainingStops: 3,
+    fetchedAt: '2026-11-03T00:00:00.000Z',
+    provider: 'tago',
+    dataMode: 'live',
+    status: 'available',
+    walkingTimeToStopSeconds: null,
+  })
+  getSubwayArrivalMock.mockResolvedValue({
+    lineName: '2호선',
+    stationName: '시청',
+    status: 'available',
+    estimates: [{
+      order: 1,
+      arrivalSeconds: 110,
+      rawArrivalSeconds: 110,
+      dataAgeSeconds: 0,
+      direction: '내선',
+      destination: '성수',
+      trainType: 'normal',
+      statusCode: '99',
+      statusMessage: '2분 후',
+      generatedAt: '2026-11-03T00:00:00.000Z',
+    }],
+    fetchedAt: '2026-11-03T00:00:30.000Z',
+    provider: 'seoul-subway',
+    dataMode: 'live',
+  })
   reverseGeocodeMock.mockResolvedValue({
     roadAddress: '서울 용산구 한강대로 405',
     address: '서울 용산구 동자동',
@@ -756,7 +826,8 @@ describe('WalkingRoutePage 출발지 선택', () => {
     expect(screen.getByRole('heading', { name: '출발지' })).toBeInTheDocument()
     expect(getTransitRoutesMock).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: '대중교통 경로 검색' }))
-    expect(await screen.findByText('추천 경로')).toBeInTheDocument()
+    expect(await screen.findByText('TMAP 경로 후보')).toBeInTheDocument()
+    expect(screen.getByText('TMAP 경로 1')).toBeInTheDocument()
     expect(screen.getByText('총 1개 경로')).toBeInTheDocument()
     expect(screen.getByText('선택됨')).toBeInTheDocument()
     expect(screen.getAllByText('버스 · 간선 100')).toHaveLength(2)
@@ -768,6 +839,21 @@ describe('WalkingRoutePage 출발지 선택', () => {
     expect(
       screen.getByRole('heading', { name: '상세 이동 경로' }),
     ).toBeInTheDocument()
+    expect(getBusArrivalMock).not.toHaveBeenCalled()
+    expect(screen.queryByText(/도착 예정 6분/)).toBeNull()
+    fireEvent.click(
+      screen.getByRole('button', { name: '실시간 도착정보 조회' }),
+    )
+    expect(await screen.findByText('도착 예정 6분 0초')).toBeInTheDocument()
+    expect(screen.getByText('3정거장 전')).toBeInTheDocument()
+    expect(screen.getByText(/TAGO 실시간/)).toBeInTheDocument()
+    expect(getBusArrivalMock).toHaveBeenCalledOnce()
+    fireEvent.click(
+      screen.getByRole('button', { name: '실시간 열차 도착정보 조회' }),
+    )
+    expect(await screen.findByText('도착 예정 1분 50초')).toBeInTheDocument()
+    expect(screen.getByText(/서울시 지하철 실시간/)).toBeInTheDocument()
+    expect(getSubwayArrivalMock).toHaveBeenCalledOnce()
     expect(screen.queryByText('TMAP 원본 이동 순서')).toBeNull()
     expect(screen.queryByText('대중교통 경로 지도')).toBeNull()
     expect(getTransitRoutesMock).toHaveBeenCalledOnce()
