@@ -132,6 +132,32 @@ describe('T2-3 순차 탑승 가능성 계산', () => {
     expect(plan.boardings[0]).toMatchObject({ status: 'likely', selectedOrder: 2 })
   })
 
+  it('0초와 남은 정류장 수가 모순된 차량은 탑승 가능성 계산에서 제외한다', () => {
+    const contradictory = busArrival(0, 0)
+    if (contradictory.status !== 'available') throw new Error('TEST_SETUP_FAILED')
+    contradictory.upcomingArrivals = contradictory.upcomingArrivals?.map(
+      (estimate) => ({
+        ...estimate,
+        remainingStops: null,
+        serviceStatus: 'departure_waiting' as const,
+        arrivalTimeStatus: 'review_required' as const,
+      }),
+    )
+    const plan = composeTransitBoardingPlan(
+      itinerary([leg('WALK'), leg('BUS')]),
+      readyModel(2),
+      arrivals(contradictory),
+      now,
+    )
+
+    expect(plan.boardings[0]).toMatchObject({
+      status: 'unavailable',
+      candidates: [],
+      selectedOrder: null,
+    })
+    expect(plan.boardings[0].message).toContain('일치하지 않아')
+  })
+
   it('지하철은 역 입구 여유만 계산하고 승강장 접근 미확인으로 확정하지 않는다', () => {
     const plan = composeTransitBoardingPlan(
       itinerary([leg('WALK'), leg('SUBWAY')]), readyModel(2), arrivals(undefined, subwayArrival()), now,

@@ -10,9 +10,9 @@ function request(routeType = 2, nextStation = '구의'): SubwayArrivalRequest {
     routeName: `${routeType}호선`,
     routeType,
     trainType: 'normal',
-    boardingStation: { tmapStationId: 'TMAP-A', name: '건대입구역' },
-    nextStation: { tmapStationId: 'TMAP-B', name: nextStation },
-    alightingStation: { tmapStationId: 'TMAP-C', name: '잠실' },
+    boardingStation: { providerStationId: 'TMAP-A', name: '건대입구역' },
+    nextStation: { providerStationId: 'TMAP-B', name: nextStation },
+    alightingStation: { providerStationId: 'TMAP-C', name: '잠실' },
   }
 }
 
@@ -40,7 +40,7 @@ async function resolve(
 
 describe('서울시 지하철 경로 매칭', () => {
   it('지원하지 않는 노선과 정상 데이터 없음 상태를 구분한다', async () => {
-    expect((await resolve([], request())).status).toBe('no_service')
+    expect((await resolve([], request())).status).toBe('no_arrival_data')
     expect((await resolve([], request(999))).status).toBe('unsupported_station')
   })
 
@@ -91,9 +91,9 @@ describe('서울시 지하철 경로 매칭', () => {
       routeName: '7호선',
       routeType: 7,
       trainType: 'normal',
-      boardingStation: { tmapStationId: 'TMAP-NAMSEONG', name: '남성역' },
-      nextStation: { tmapStationId: 'TMAP-ISU', name: '이수' },
-      alightingStation: { tmapStationId: 'TMAP-KONKUK', name: '건대입구역' },
+      boardingStation: { providerStationId: 'TMAP-NAMSEONG', name: '남성역' },
+      nextStation: { providerStationId: 'TMAP-ISU', name: '이수' },
+      alightingStation: { providerStationId: 'TMAP-KONKUK', name: '건대입구역' },
     }
     const result = await resolve([
       record({
@@ -112,6 +112,34 @@ describe('서울시 지하철 경로 매칭', () => {
     expect(result.estimates[0]).toMatchObject({
       direction: '상행',
       destination: '도봉산',
+    })
+  })
+
+  it('카카오 7호선 요청은 TMAP routeType 없이 노선명과 이수→내방 방향을 검증한다', async () => {
+    const kakaoRequest: SubwayArrivalRequest = {
+      routeName: '7호선',
+      routeType: null,
+      trainType: 'normal',
+      boardingStation: { providerStationId: null, name: '이수' },
+      nextStation: { providerStationId: null, name: '내방' },
+      alightingStation: { providerStationId: null, name: '건대입구' },
+    }
+    const result = await resolve([
+      record({
+        subwayId: '1007', stationName: '총신대입구(이수)', upDownLine: '상행',
+        trainLineName: '장암행 - 내방방면', arrivalSeconds: 180,
+      }),
+      record({
+        subwayId: '1007', stationName: '총신대입구(이수)', upDownLine: '하행',
+        trainLineName: '석남행 - 남성방면', arrivalSeconds: 30,
+      }),
+    ], kakaoRequest)
+
+    expect(result.status).toBe('available')
+    expect(result.estimates).toHaveLength(1)
+    expect(result.estimates[0]).toMatchObject({
+      direction: '상행',
+      destination: '장암',
     })
   })
 

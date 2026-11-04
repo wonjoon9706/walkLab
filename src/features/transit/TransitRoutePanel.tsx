@@ -29,6 +29,7 @@ import {
 import { BusArrivalStatus } from './BusArrivalStatus'
 import { SubwayArrivalStatus } from './SubwayArrivalStatus'
 import { TransitBoardingAssessment } from './TransitBoardingAssessment'
+import { KakaoTransitRoutePanel } from './KakaoTransitRoutePanel'
 import {
   createSubwayArrivalRequest,
   subwayArrivalClient,
@@ -53,6 +54,7 @@ import {
 interface TransitRoutePanelProps {
   active: boolean
   origin: GeoCoordinate
+  originSource?: 'current_location' | 'searched_place' | 'map'
   destination: PlaceSearchResult
   speedModel: WalkingSpeedModel | null
   onMapVisibilityChange?: (isVisible: boolean) => void
@@ -137,7 +139,7 @@ function RouteBadge({
   )
 }
 
-export function TransitRoutePanel({
+export function TmapTransitRoutePanel({
   active,
   origin,
   destination,
@@ -643,8 +645,17 @@ export function TransitRoutePanel({
               <div><dt>TMAP 기본 예상시간</dt><dd>{formatDuration(selectedEta.providerDurationSeconds)}</dd></div>
               <div><dt>{selectedEta.speedProfile.source === 'personalized' ? '참고 도착' : '예상 도착'}</dt><dd>{formatKoreanArrivalTime(selectedEta.arrivalAt, new Date(result.requestedAt))}</dd></div>
             </dl>
-            <p className="auth-message">{selectedEta.speedProfile.source === 'personalized' ? 'TMAP 전체시간에서 TMAP 도보시간을 빼고, 도보 거리를 G7 속도로 환산한 순수 보행시간을 넣은 참고값입니다. 신호·계단·접근 대기는 별도로 확인되지 않았습니다.' : '학습 데이터가 부족해 TMAP 기본 예상시간을 표시합니다.'} 실시간 버스 대기시간은 이 상단 시간에 반영되지 않으며, 표시 순서는 TMAP 반환 순서입니다.</p>
-            {Math.abs(auditTransitDurations(selected, selectedEta).providerToLegDifferenceSeconds) >= 1 && <p className="auth-message warning-card">TMAP 전체시간과 구간 합계가 다릅니다. 공급자 원본 값을 그대로 표시합니다.</p>}
+            <p className="auth-message">
+              {selectedEta.speedProfile.source === 'personalized'
+                ? '개인 보행속도를 반영한 참고시간입니다. 일부 도보·대기시간은 실제와 다를 수 있습니다.'
+                : '개인화 계산 전에는 TMAP 기본 예상시간을 표시합니다.'}
+            </p>
+            {import.meta.env.DEV && Math.abs(auditTransitDurations(selected, selectedEta).providerToLegDifferenceSeconds) >= 1 && (
+              <details className="transit-route-diagnostics">
+                <summary>로컬 ETA 진단</summary>
+                <p>TMAP 전체시간과 구간 합계가 다르며 공급자 원본 값을 유지합니다.</p>
+              </details>
+            )}
             <button type="button" className="secondary-button route-map-toggle" onClick={() => changeMapVisibility(!isMapVisible)}>
               {isMapVisible ? '지도 접기' : '지도 보기'}
             </button>
@@ -775,18 +786,17 @@ export function TransitRoutePanel({
             <section className="status-card station-access-comparison" aria-labelledby="station-access-comparison-title">
               <h2 id="station-access-comparison-title">역까지 직접 걷기와 비교</h2>
               {stationAccessContext.status === 'endpoint_unavailable' && (
-                <p className="auth-message">TMAP 응답에서 동일한 역 접근 비교 지점 좌표를 확보하지 못해 비교할 수 없습니다.</p>
+                <p className="auth-message">같은 역까지의 도착 지점을 확인할 수 없어 비교하지 않습니다.</p>
               )}
               {stationAccessContext.status === 'endpoint_mismatch' && (
-                <p className="auth-message">버스 후 도보 종료점과 지하철 시작점이 30m보다 멀어 같은 도착 지점으로 확인할 수 없습니다.</p>
+                <p className="auth-message">버스와 지하철 사이의 도보 연결이 불확실해 비교하지 않습니다.</p>
               )}
               {stationAccessContext.status === 'ready' && (
                 <>
                   <p className="page-description">
                     비교 지점: TMAP {stationAccessContext.context.targetName} 접근점
-                    {' · '}두 구간 좌표 차이 {Math.round(stationAccessContext.context.endpointGapM)}m
                   </p>
-                  <p className="search-status">실제 출입구 번호는 확인되지 않았습니다. 버튼을 누를 때만 이 동일 지점까지 카카오 도보 경로를 조회합니다.</p>
+                  <p className="search-status">버튼을 누를 때만 같은 지점까지의 직접 도보 경로를 조회합니다.</p>
                   <button
                     type="button"
                     className="secondary-button station-access-comparison-button"
@@ -937,12 +947,9 @@ export function TransitRoutePanel({
                       )}
                       {lastBusAlternativeComparison.outcome === 'review_required' && (
                         <strong className="station-access-comparison-conclusion">
-                          G8 경로의 시작·종료점 스냅 오차가 30m를 넘어 참고용으로만 표시합니다.
+                          일부 도보 구간의 연결이 불확실해 참고용으로만 표시합니다.
                         </strong>
                       )}
-                      <small>
-                        좌표 검증: 시작 오차 약 {formatDistance(lastBusAlternativeComparison.directRouteStartGapM)} · 종료 오차 약 {formatDistance(lastBusAlternativeComparison.directRouteDestinationGapM)} · {lastBusAlternativeComparison.directRouteValidation === 'verified' ? '비교 가능' : '확인 필요'}
-                      </small>
                       <small>현재 조회한 버스 도착정보는 미래 환승 대기시간으로 사용하지 않습니다. 실제 버스정류장 도착 시 다시 조회해야 합니다.</small>
                       <small>신호·계단·역사 접근시간과 교통 지연은 확인되지 않았으며, 전체 경로를 최적이라고 확정하지 않습니다.</small>
                       {lastBusDirectRoute?.itineraryId === selected.id && (
@@ -1007,8 +1014,8 @@ export function TransitRoutePanel({
                         </strong>
                         <small>
                           {walkingEstimate.speedProfile.source === 'personalized'
-                            ? `최근 유효 기록 ${walkingEstimate.speedProfile.validSessionCount}개 기반 참고값`
-                            : 'G7 표본 부족 · 기본속도 참고값'}
+                            ? '개인 보행속도 반영'
+                            : '기본 보행속도 참고값'}
                         </small>
                         <small>신호·계단·접근 대기 포함 여부 미확인</small>
                       </span>
@@ -1060,4 +1067,9 @@ export function TransitRoutePanel({
       )}
     </>
   )
+}
+
+export function TransitRoutePanel(props: TransitRoutePanelProps) {
+  if (!import.meta.env.DEV) return <TmapTransitRoutePanel {...props} />
+  return <KakaoTransitRoutePanel {...props} />
 }

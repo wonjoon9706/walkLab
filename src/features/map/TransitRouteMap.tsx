@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { publicEnvironment } from '../../app/env'
 import type { TransitItinerary, TransitMode } from '../../domain/transitRoute'
+import {
+  transitReferenceWalkPresentation,
+  type TransitReferenceWalkOverlay,
+} from '../../domain/transitMap'
 import type { GeoCoordinate } from '../../domain/walkingRoute'
 import {
   loadKakaoMapSdk,
@@ -12,6 +16,7 @@ interface TransitRouteMapProps {
   itinerary: TransitItinerary
   start: GeoCoordinate
   destination: GeoCoordinate
+  referenceWalks?: TransitReferenceWalkOverlay[]
 }
 
 function createMarkerImage(
@@ -36,10 +41,24 @@ function getLegColor(mode: TransitMode, providerColor: string | null): string {
   return '#176b87'
 }
 
+function createDiagnosticMarkerImage(
+  maps: KakaoMapsNamespace,
+  color: string,
+  alt: string,
+) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="${color}" stroke="white" stroke-width="2"/></svg>`
+  return new maps.MarkerImage(
+    `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    new maps.Size(20, 20),
+    { offset: new maps.Point(10, 10), alt },
+  )
+}
+
 export function TransitRouteMap({
   itinerary,
   start,
   destination,
+  referenceWalks = [],
 }: TransitRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [mapError, setMapError] = useState<string | null>(null)
@@ -91,6 +110,74 @@ export function TransitRouteMap({
           }
         }
 
+        for (const reference of referenceWalks) {
+          const path = reference.coordinates.map((coordinate) =>
+            new maps.LatLng(coordinate.latitude, coordinate.longitude),
+          )
+          path.forEach((position) => bounds.extend(position))
+          if (path.length >= 2) {
+            overlays.push(new maps.Polyline({
+              map,
+              path,
+              strokeWeight: 5,
+              strokeColor: transitReferenceWalkPresentation.strokeColor,
+              strokeOpacity: 0.8,
+              strokeStyle: transitReferenceWalkPresentation.strokeStyle,
+            }))
+          }
+
+          if (import.meta.env.DEV && path.length >= 2) {
+            const requestedStart = new maps.LatLng(
+              reference.requestedStart.latitude,
+              reference.requestedStart.longitude,
+            )
+            const requestedDestination = new maps.LatLng(
+              reference.requestedDestination.latitude,
+              reference.requestedDestination.longitude,
+            )
+            bounds.extend(requestedStart)
+            bounds.extend(requestedDestination)
+            overlays.push(
+              new maps.Marker({
+                map,
+                position: requestedStart,
+                image: createDiagnosticMarkerImage(
+                  maps,
+                  transitReferenceWalkPresentation.requestedStartMarkerColor,
+                  `${reference.label} 요청 시작점`,
+                ),
+              }),
+              new maps.Marker({
+                map,
+                position: path[0],
+                image: createDiagnosticMarkerImage(
+                  maps,
+                  transitReferenceWalkPresentation.routeStartMarkerColor,
+                  `${reference.label} G8 시작점`,
+                ),
+              }),
+              new maps.Marker({
+                map,
+                position: path.at(-1)!,
+                image: createDiagnosticMarkerImage(
+                  maps,
+                  transitReferenceWalkPresentation.routeEndMarkerColor,
+                  `${reference.label} G8 종료점`,
+                ),
+              }),
+              new maps.Marker({
+                map,
+                position: requestedDestination,
+                image: createDiagnosticMarkerImage(
+                  maps,
+                  transitReferenceWalkPresentation.requestedDestinationMarkerColor,
+                  `${reference.label} 요청 종료점`,
+                ),
+              }),
+            )
+          }
+        }
+
         overlays.push(
           new maps.Marker({
             map,
@@ -116,7 +203,7 @@ export function TransitRouteMap({
       overlays.forEach((overlay) => overlay.setMap(null))
       container.replaceChildren()
     }
-  }, [destination, itinerary, javaScriptKey, start])
+  }, [destination, itinerary, javaScriptKey, referenceWalks, start])
 
   if (javaScriptKey === null) {
     return <p className="error-message">카카오맵 설정이 없습니다.</p>
@@ -135,6 +222,17 @@ export function TransitRouteMap({
         <span className="filtered-route-key">버스·지하철</span>
         <span className="start-point-key">출발지</span>
         <span className="end-point-key">목적지</span>
+        {referenceWalks.length > 0 && (
+          <span className="reference-walk-key">G8 참고 경로(연결 미확인)</span>
+        )}
+        {import.meta.env.DEV && referenceWalks.length > 0 && (
+          <>
+            <span className="reference-request-start-key">요청 시작점</span>
+            <span className="reference-route-start-key">G8 시작점</span>
+            <span className="reference-route-end-key">G8 종료점</span>
+            <span className="reference-request-end-key">요청 종료점</span>
+          </>
+        )}
       </p>
     </>
   )

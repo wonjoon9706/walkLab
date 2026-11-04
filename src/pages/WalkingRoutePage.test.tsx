@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PlaceSearchResult } from '../domain/walkingRoute'
@@ -7,6 +8,7 @@ const {
   getCurrentLocationMock,
   getWalkingRouteMock,
   getTransitRoutesMock,
+  getKakaoTransitRoutesMock,
   getBusArrivalMock,
   getSubwayArrivalMock,
   reverseGeocodeMock,
@@ -23,6 +25,7 @@ const {
   getCurrentLocationMock: vi.fn(),
   getWalkingRouteMock: vi.fn(),
   getTransitRoutesMock: vi.fn(),
+  getKakaoTransitRoutesMock: vi.fn(),
   getBusArrivalMock: vi.fn(),
   getSubwayArrivalMock: vi.fn(),
   reverseGeocodeMock: vi.fn(),
@@ -131,6 +134,22 @@ const transitResult = {
   }],
 } as const
 
+const kakaoTransitResult = {
+  provider: 'kakao-map-publictraffic',
+  requestedAt: '2026-11-02T00:00:00.000Z',
+  reportedRouteCounts: { total: 1, bus: 0, subway: 0, busAndSubway: 0 },
+  rejectedRoutes: [],
+  routes: [{
+    id: 'kakao-route-1', type: 'SUBWAY', totalDistanceM: 4_000,
+    totalDurationSeconds: 900, transferCount: 0, fare: null,
+    steps: [{
+      index: 0, mode: 'WALKING', guidance: '도보 이동', distanceM: 400,
+      durationSeconds: 300, stops: [], vehicles: [],
+      coordinates: [manualOrigin.coordinate, destination.coordinate],
+    }],
+  }],
+} as const
+
 vi.mock('../features/auth/authContext', () => ({
   useAuth: () => ({ user: { id: 'user-1', email: 'user@example.com' } }),
 }))
@@ -173,6 +192,10 @@ vi.mock('../services/routing/walkingRouteClient', () => ({
 
 vi.mock('../services/routing/transitRouteClient', () => ({
   transitRouteClient: { getTransitRoutes: getTransitRoutesMock },
+}))
+
+vi.mock('../services/routing/kakaoTransitRouteClient', () => ({
+  kakaoTransitRouteClient: { getTransitRoutes: getKakaoTransitRoutesMock },
 }))
 
 vi.mock('../services/transitArrival/busArrivalClient', () => ({
@@ -273,7 +296,9 @@ vi.mock('../features/places/PlaceSearchPanel', () => ({
 }))
 
 beforeEach(() => {
+  loadSpeedModelMock.mockReset()
   getTransitRoutesMock.mockReset()
+  getKakaoTransitRoutesMock.mockReset().mockResolvedValue(kakaoTransitResult)
   getBusArrivalMock.mockReset()
   getSubwayArrivalMock.mockReset()
   reverseGeocodeMock.mockReset()
@@ -361,6 +386,19 @@ beforeEach(() => {
 })
 
 describe('WalkingRoutePage 출발지 선택', () => {
+  it('동일 사용자 객체가 재생성돼도 G7 기록 조회를 반복하지 않는다', async () => {
+    const page = <MemoryRouter><WalkingRoutePage /></MemoryRouter>
+    const { rerender } = render(page)
+    await screen.findByRole('heading', { name: '출발지' })
+    await waitFor(() => expect(loadSpeedModelMock).toHaveBeenCalled())
+    rerender(<MemoryRouter><WalkingRoutePage /></MemoryRouter>)
+    await waitFor(() => expect(loadSpeedModelMock).toHaveBeenCalledTimes(1))
+  })
+  it('StrictMode 초기 재설정에서도 동일 사용자 G7 기록 조회를 공유한다', async () => {
+    render(<StrictMode><MemoryRouter><WalkingRoutePage /></MemoryRouter></StrictMode>)
+    await screen.findByRole('heading', { name: '출발지' })
+    await waitFor(() => expect(loadSpeedModelMock).toHaveBeenCalledTimes(1))
+  })
   it('출발지 상태와 검색 기능을 하나의 영역에 표시한다', async () => {
     getCurrentLocationMock.mockResolvedValueOnce({
       coordinate: { latitude: 37.5, longitude: 127.1 },
@@ -824,57 +862,20 @@ describe('WalkingRoutePage 출발지 선택', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: '대중교통' }))
     expect(screen.getByRole('heading', { name: '출발지' })).toBeInTheDocument()
-    expect(getTransitRoutesMock).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: '대중교통 경로 검색' }))
-    expect(await screen.findByText('TMAP 경로 후보')).toBeInTheDocument()
-    expect(screen.getByText('TMAP 경로 1')).toBeInTheDocument()
-    expect(screen.getByText('총 1개 경로')).toBeInTheDocument()
-    expect(screen.getByText('선택됨')).toBeInTheDocument()
-    expect(screen.getAllByText('버스 · 간선 100')).toHaveLength(2)
-    expect(screen.getAllByText('지하철 · 2호선')).toHaveLength(2)
-    expect(screen.getByTitle('환승')).toBeInTheDocument()
-    expect(
-      screen.getByRole('heading', { name: '선택한 경로 상세' }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('heading', { name: '상세 이동 경로' }),
-    ).toBeInTheDocument()
-    expect(getBusArrivalMock).not.toHaveBeenCalled()
-    expect(screen.queryByText(/도착 예정 6분/)).toBeNull()
-    fireEvent.click(
-      screen.getByRole('button', { name: '실시간 도착정보 조회' }),
-    )
-    expect(await screen.findByText('도착 예정 6분 0초')).toBeInTheDocument()
-    expect(screen.getByText('3정거장 전')).toBeInTheDocument()
-    expect(screen.getByText(/TAGO 실시간/)).toBeInTheDocument()
-    expect(getBusArrivalMock).toHaveBeenCalledOnce()
-    fireEvent.click(
-      screen.getByRole('button', { name: '실시간 열차 도착정보 조회' }),
-    )
-    expect(await screen.findByText('도착 예정 1분 50초')).toBeInTheDocument()
-    expect(screen.getByText(/서울시 지하철 실시간/)).toBeInTheDocument()
-    expect(getSubwayArrivalMock).toHaveBeenCalledOnce()
-    expect(screen.queryByText('TMAP 원본 이동 순서')).toBeNull()
-    expect(screen.queryByText('대중교통 경로 지도')).toBeNull()
-    expect(getTransitRoutesMock).toHaveBeenCalledOnce()
-    expect(getTransitRoutesMock).toHaveBeenCalledWith({
+    expect(await screen.findByRole('heading', { name: '경로' })).toBeInTheDocument()
+    expect(getKakaoTransitRoutesMock).toHaveBeenCalledOnce()
+    expect(getKakaoTransitRoutesMock).toHaveBeenCalledWith({
       start: manualOrigin.coordinate,
       destination: destination.coordinate,
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: '지도 보기' }))
-    expect(screen.getByText('대중교통 경로 지도')).toBeInTheDocument()
-    expect(getTransitRoutesMock).toHaveBeenCalledOnce()
+    }, expect.objectContaining({ signal: expect.any(AbortSignal) }))
 
     fireEvent.click(screen.getByRole('tab', { name: '도보' }))
     fireEvent.click(screen.getByRole('tab', { name: '대중교통' }))
-    expect(screen.getByText('대중교통 경로 지도')).toBeInTheDocument()
-    expect(getTransitRoutesMock).toHaveBeenCalledOnce()
+    expect(screen.getByRole('heading', { name: '경로' })).toBeInTheDocument()
+    expect(getKakaoTransitRoutesMock).toHaveBeenCalledOnce()
 
     fireEvent.click(screen.getByRole('button', { name: '시청역 출발 선택' }))
-    expect(screen.queryByText('대중교통 경로 지도')).toBeNull()
-    expect(screen.getByText('위치 미리보기 지도')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '대중교통 경로 검색' })).toBeInTheDocument()
+    await waitFor(() => expect(getKakaoTransitRoutesMock).toHaveBeenCalledTimes(2))
   })
 
   it('도보 경로 지도는 결과에서 사용자가 펼칠 때만 표시한다', async () => {
@@ -893,23 +894,28 @@ describe('WalkingRoutePage 출발지 선택', () => {
   })
 
   it('좌표 변경 전 대중교통 응답과 중복 클릭을 현재 결과로 반영하지 않는다', async () => {
-    let resolveRequest: (value: typeof transitResult) => void = vi.fn()
-    getTransitRoutesMock.mockReturnValueOnce(
+    let resolveRequest: (value: typeof kakaoTransitResult) => void = vi.fn()
+    getKakaoTransitRoutesMock.mockReset().mockReturnValueOnce(
       new Promise((resolve) => { resolveRequest = resolve }),
-    )
+    ).mockResolvedValueOnce(kakaoTransitResult)
     render(<MemoryRouter><WalkingRoutePage /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: '서울역 출발 선택' }))
     fireEvent.click(screen.getByRole('button', { name: '광화문 목적지 선택' }))
     fireEvent.click(screen.getByRole('tab', { name: '대중교통' }))
 
-    const searchButton = screen.getByRole('button', { name: '대중교통 경로 검색' })
-    fireEvent.click(searchButton)
-    fireEvent.click(searchButton)
-    expect(getTransitRoutesMock).toHaveBeenCalledOnce()
+    await waitFor(() => expect(getKakaoTransitRoutesMock).toHaveBeenCalledOnce())
+    fireEvent.click(screen.getByRole('tab', { name: '도보' }))
+    fireEvent.click(screen.getByRole('tab', { name: '대중교통' }))
+    expect(getKakaoTransitRoutesMock).toHaveBeenCalledOnce()
     fireEvent.click(screen.getByRole('button', { name: '시청역 출발 선택' }))
-    resolveRequest(transitResult)
+    await waitFor(() => expect(getKakaoTransitRoutesMock).toHaveBeenCalledTimes(2))
+    resolveRequest(kakaoTransitResult)
 
-    await waitFor(() => expect(screen.queryByText('대중교통 경로 지도')).toBeNull())
+    expect(await screen.findByRole('heading', { name: '경로' })).toBeInTheDocument()
+    expect(getKakaoTransitRoutesMock).toHaveBeenLastCalledWith({
+      start: secondOrigin.coordinate,
+      destination: destination.coordinate,
+    }, expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 })
 

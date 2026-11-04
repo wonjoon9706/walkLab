@@ -155,12 +155,17 @@ export function WalkingRoutePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const activeMode = searchParams.get('mode') === 'transit' ? 'transit' : 'walking'
   const { user } = useAuth()
+  const ownerUserId = user?.id ?? null
   const measurement = useMeasurement()
   const sync = useSync()
   const navigation = useLiveNavigation()
   const stopMeasurementOnUnmount = measurement.stopMeasurement
   const stopNavigationOnUnmount = navigation.stop
   const routeRequestIdRef = useRef(0)
+  const speedModelRequestRef = useRef<{
+    ownerUserId: string
+    promise: Promise<WalkingSpeedModel>
+  } | null>(null)
   const locationRequestIdRef = useRef(0)
   const reverseGeocodeRequestIdRef = useRef(0)
   const originSourceRef = useRef<OriginSource>('current_location')
@@ -383,13 +388,21 @@ export function WalkingRoutePage() {
     }
   }, [])
 
+  // 인증 확인 때 같은 사용자 객체가 새로 만들어져도 GPS 이력을 다시 읽지 않는다.
   useEffect(() => {
     let isCurrent = true
     async function loadSpeedModel() {
-      if (user === null) return
+      if (ownerUserId === null) return
       setSpeedModelStatus('loading')
       try {
-        const model = await loadCurrentWalkingSpeedModel(user.id)
+        // 개발 모드의 effect 재설정도 동일한 진행 중 조회를 공유한다.
+        if (speedModelRequestRef.current?.ownerUserId !== ownerUserId) {
+          speedModelRequestRef.current = {
+            ownerUserId,
+            promise: loadCurrentWalkingSpeedModel(ownerUserId),
+          }
+        }
+        const model = await speedModelRequestRef.current.promise
         if (isCurrent) {
           setSpeedModel(model)
           setSpeedModelStatus('ready')
@@ -406,7 +419,7 @@ export function WalkingRoutePage() {
     return () => {
       isCurrent = false
     }
-  }, [user])
+  }, [ownerUserId])
 
   function selectOrigin(place: PlaceSearchResult) {
     if (navigation.isActive || linkedMeasurementRef.current) {
@@ -503,6 +516,36 @@ export function WalkingRoutePage() {
       return
     }
     if (activeMode === 'walking') void requestRoute(origin, place)
+  }
+
+  function swapRouteEndpoints() {
+    if (origin === null || destination === null || navigation.isActive) return
+    const previousOrigin: PlaceSearchResult = originPlace ?? {
+      id: `origin-${origin.latitude}-${origin.longitude}`,
+      name: originSource === 'current_location' ? '현재 위치' : '기존 출발지',
+      address: currentLocationAddress ?? '선택한 출발 위치',
+      roadAddress: currentLocationAddress,
+      coordinate: origin,
+    }
+    const nextOrigin = destination
+
+    locationRequestIdRef.current += 1
+    reverseGeocodeRequestIdRef.current += 1
+    routeRequestIdRef.current += 1
+    originSourceRef.current = 'searched_place'
+    setOrigin(nextOrigin.coordinate)
+    setOriginSource('searched_place')
+    setOriginPlace(nextOrigin)
+    setDestination(previousOrigin)
+    setIsMapOriginSelectionEnabled(false)
+    setIsWalkingMapVisible(false)
+    setLocationError(null)
+    setRoute(null)
+    setRouteError(null)
+    setRouteStatus('idle')
+    if (activeMode === 'walking') {
+      void requestRoute(nextOrigin.coordinate, previousOrigin)
+    }
   }
 
   function changeMode(nextMode: 'walking' | 'transit') {
@@ -730,6 +773,19 @@ export function WalkingRoutePage() {
               )}
             </PlaceSearchPanel>
 
+            <button
+              type="button"
+              className="route-endpoint-swap"
+              disabled={origin === null || destination === null}
+              aria-label="출발지와 목적지 바꾸기"
+              title="출발지와 목적지 바꾸기"
+              onClick={swapRouteEndpoints}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 4v15m0 0-3-3m3 3 3-3M16 20V5m0 0-3 3m3-3 3 3" />
+              </svg>
+            </button>
+
             <PlaceSearchPanel
               idPrefix="destination"
               title="목적지"
@@ -861,6 +917,7 @@ export function WalkingRoutePage() {
           key={sharedRouteKey}
           active={!navigation.isActive && activeMode === 'transit' && !isMapOriginSelectionEnabled}
           origin={origin}
+          originSource={originSource}
           destination={destination}
           speedModel={speedModel}
           onMapVisibilityChange={setIsTransitMapVisible}

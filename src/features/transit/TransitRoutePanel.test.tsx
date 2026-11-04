@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TransitRouteResult } from '../../domain/transitRoute'
-import { TransitRoutePanel } from './TransitRoutePanel'
+import { TmapTransitRoutePanel, TransitRoutePanel } from './TransitRoutePanel'
 
 const {
   getTransitRoutesMock,
@@ -29,6 +29,7 @@ vi.mock('../../services/transitArrival/subwayArrivalClient', () => ({
 
 vi.mock('../../services/routing/walkingRouteClient', () => ({
   walkingRouteClient: { getWalkingRoute: getWalkingRouteMock },
+  getSupabaseAccessToken: vi.fn(async () => 'test-token'),
 }))
 
 vi.mock('../map/TransitRouteMap', () => ({
@@ -37,6 +38,10 @@ vi.mock('../map/TransitRouteMap', () => ({
 
 vi.mock('../map/WalkingRouteMap', () => ({
   WalkingRouteMap: () => <div>직접 도보 지도</div>,
+}))
+
+vi.mock('./KakaoTransitRoutePanel', () => ({
+  KakaoTransitRoutePanel: () => <div>카카오 기본 공급자</div>,
 }))
 
 const origin = { latitude: 37.548, longitude: 127.066 }
@@ -122,7 +127,7 @@ const lastBusRouteResult: TransitRouteResult = {
 
 function renderPanel() {
   render(
-    <TransitRoutePanel
+    <TmapTransitRoutePanel
       active
       origin={origin}
       destination={{
@@ -159,11 +164,28 @@ describe('T2-4A 대중교통 패널', () => {
     })
   })
 
+  it('localhost 개발 모드에서 공급자 선택 없이 카카오를 기본 표시한다', () => {
+    render(
+      <TransitRoutePanel
+        active
+        origin={origin}
+        destination={{
+          id: 'destination', name: '목적지', address: '서울', roadAddress: null,
+          coordinate: { latitude: 37.6, longitude: 127.1 },
+        }}
+        speedModel={null}
+      />,
+    )
+
+    expect(screen.getByText('카카오 기본 공급자')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: '로컬 대중교통 경로 공급자' })).not.toBeInTheDocument()
+  })
+
   it('사용자 클릭 후 동일 비교 지점으로 조회하고 선택된 두 번째 버스를 표시한다', async () => {
     renderPanel()
     fireEvent.click(screen.getByRole('button', { name: '대중교통 경로 검색' }))
     expect(await screen.findByText('TMAP 경로 후보')).toBeInTheDocument()
-    expect(screen.getByText(/실시간 버스 대기시간은 이 상단 시간에 반영되지/)).toBeInTheDocument()
+    expect(screen.getByText(/개인화 계산 전에는 TMAP 기본 예상시간/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '실시간 도착정보 조회' }))
     await screen.findByText(/두 번째 버스/)

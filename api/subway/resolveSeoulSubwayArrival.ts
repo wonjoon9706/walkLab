@@ -4,6 +4,7 @@ import type {
 } from '../../src/domain/subwayArrival.js'
 import {
   getSeoulSubwayId,
+  getSeoulSubwayIdByLineName,
   getSeoulSubwayQueryName,
   isSameSubwayStationName,
   normalizeSeoulTrainType,
@@ -18,7 +19,7 @@ function unavailable(
   fetchedAt: string,
 ): SubwayArrivalInfo {
   return {
-    lineName: request.routeName ?? `${request.routeType}호선`,
+    lineName: request.routeName ?? `${request.routeType ?? ''}호선`,
     stationName: request.boardingStation.name,
     status,
     estimates: [],
@@ -35,7 +36,11 @@ export async function resolveSeoulSubwayArrival(
   now: Date = new Date(),
 ): Promise<SubwayArrivalInfo> {
   const fetchedAt = now.toISOString()
-  const expectedSubwayId = getSeoulSubwayId(request.routeType)
+  const expectedSubwayId = request.routeName === null
+    ? request.routeType === null ? null : getSeoulSubwayId(request.routeType)
+    : getSeoulSubwayIdByLineName(request.routeName) ?? (
+        request.routeType === null ? null : getSeoulSubwayId(request.routeType)
+      )
   if (expectedSubwayId === null) {
     return unavailable(request, 'unsupported_station', fetchedAt)
   }
@@ -45,7 +50,7 @@ export async function resolveSeoulSubwayArrival(
     signal,
   )
   if (records.length === 0) {
-    return unavailable(request, 'no_service', fetchedAt)
+    return unavailable(request, 'no_arrival_data', fetchedAt)
   }
 
   const stationRecords = records.filter((record) =>
@@ -128,7 +133,7 @@ export async function resolveSeoulSubwayArrival(
     })
 
   return {
-    lineName: request.routeName ?? `${request.routeType}호선`,
+    lineName: request.routeName ?? `${request.routeType ?? ''}호선`,
     stationName: request.boardingStation.name,
     status: 'available',
     estimates,

@@ -114,12 +114,26 @@ function assessBus(
     )
   }
 
-  const estimates = arrival.upcomingArrivals ?? [{
+  const estimates = (arrival.upcomingArrivals ?? [{
     order: 1 as const,
     arrivalSeconds: arrival.arrivalSeconds,
     remainingStops: arrival.remainingStops,
     message: null,
-  }]
+  }]).filter((estimate) =>
+    estimate.arrivalTimeStatus !== 'review_required' &&
+    estimate.serviceStatus !== 'departure_waiting',
+  )
+  if (estimates.length === 0) {
+    return unavailableAssessment(
+      legIndex,
+      'BUS',
+      'unavailable',
+      freshness,
+      accessDurationSeconds,
+      accessArrivalAt,
+      '서울시 도착시간과 남은 정류장 정보가 일치하지 않아 탑승 가능성을 판단하지 않습니다.',
+    )
+  }
   const fetchedAt = new Date(arrival.fetchedAt).getTime()
   const candidates: BoardingCandidateAssessment[] = estimates.map((estimate) => {
     const serviceArrivalAt = fetchedAt + estimate.arrivalSeconds * 1_000

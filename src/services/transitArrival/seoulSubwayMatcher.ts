@@ -29,9 +29,22 @@ const SEOUL_SUBWAY_ID_BY_TMAP_TYPE: Readonly<Record<number, string>> = {
   125: '1032',
 }
 
+const SEOUL_SUBWAY_ID_BY_LINE_NAME: Readonly<Record<string, string>> = {
+  '1호선': '1001',
+  '2호선': '1002',
+  '3호선': '1003',
+  '4호선': '1004',
+  '5호선': '1005',
+  '6호선': '1006',
+  '7호선': '1007',
+  '8호선': '1008',
+  '9호선': '1009',
+}
+
 const EXPRESS_TMAP_TYPES = new Set([117, 118, 119, 120, 121, 122, 123, 124])
 
 const SEOUL_SUBWAY_QUERY_ALIASES: Readonly<Record<string, string>> = {
+  이수: '총신대입구(이수)',
   // 서울시 API 실측 역명은 병기명을 포함해야 하며 짧은 이름은 INFO-200을 반환한다.
   어린이대공원: '어린이대공원(세종대)',
 }
@@ -43,6 +56,11 @@ const SEOUL_SUBWAY_STATION_NAME_ALIASES: Readonly<Record<string, string>> = {
 
 export function getSeoulSubwayId(routeType: number): string | null {
   return SEOUL_SUBWAY_ID_BY_TMAP_TYPE[routeType] ?? null
+}
+
+export function getSeoulSubwayIdByLineName(lineName: string): string | null {
+  const normalized = lineName.normalize('NFKC').replace(/\s+/g, '')
+  return SEOUL_SUBWAY_ID_BY_LINE_NAME[normalized] ?? null
 }
 
 export function getTmapSubwayTrainType(

@@ -233,4 +233,37 @@ describe('T2-4A 역 접근 비교', () => {
       legs: [leg('WALK'), leg('SUBWAY')],
     }).status).toBe('unsupported_structure')
   })
+
+  it('역 접근 이후 구간이 더 있어도 첫 WALK → BUS → WALK → SUBWAY 계약을 재사용한다', () => {
+    const withFollowingLegs = itinerary()
+    withFollowingLegs.legs.push(
+      leg('WALK', { startName: '환승역', endName: '다음 승차점' }),
+      leg('BUS', { routeName: '후속 버스' }),
+    )
+
+    expect(findStationAccessComparisonContext(withFollowingLegs).status)
+      .toBe('unsupported_structure')
+    const result = findStationAccessComparisonContext(withFollowingLegs, {
+      allowFollowingLegs: true,
+    })
+
+    expect(result.status).toBe('ready')
+    if (result.status === 'ready') {
+      expect(result.context.busLegIndex).toBe(1)
+      expect(result.context.subwayLegIndex).toBe(3)
+    }
+  })
+
+  it('버스 하차 후 역 접근 WALK가 없으면 시간을 임의 생성하지 않는다', () => {
+    const withoutTransferWalk = itinerary()
+    withoutTransferWalk.legs = [
+      withoutTransferWalk.legs[0],
+      withoutTransferWalk.legs[1],
+      withoutTransferWalk.legs[3],
+    ]
+
+    expect(findStationAccessComparisonContext(withoutTransferWalk)).toEqual({
+      status: 'unsupported_structure',
+    })
+  })
 })

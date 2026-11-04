@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   getSeoulSubwayId,
+  getSeoulSubwayIdByLineName,
   getSeoulSubwayQueryName,
   getTmapSubwayTrainType,
   isSameSubwayStationName,
@@ -33,5 +34,18 @@ describe('서울시 지하철 식별 규칙', () => {
     expect(getSeoulSubwayQueryName('어린이대공원역')).toBe(
       '어린이대공원(세종대)',
     )
+  })
+})
+
+describe('카카오 지하철 노선명 매핑', () => {
+  it('정확한 노선명만 서울시 지하철 노선 ID로 변환한다', () => {
+    expect(getSeoulSubwayIdByLineName('7호선')).toBe('1007')
+    expect(getSeoulSubwayIdByLineName('7 호선')).toBe('1007')
+    expect(getSeoulSubwayIdByLineName('17호선')).toBeNull()
+    expect(getSeoulSubwayIdByLineName('7호선 급행')).toBeNull()
+  })
+
+  it('이수의 서울시 API 조회명에 병기명을 사용한다', () => {
+    expect(getSeoulSubwayQueryName('이수')).toBe('총신대입구(이수)')
   })
 })

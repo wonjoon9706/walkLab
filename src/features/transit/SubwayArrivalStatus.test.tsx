@@ -59,3 +59,17 @@ describe('지하철 도착정보 카드', () => {
     expect(screen.getAllByText('내선 · 온수행')).toHaveLength(2)
   })
 })
+
+describe('지하철 도착정보 없음 상태', () => {
+  it('API 0건을 운행 중단으로 단정하지 않는다', () => {
+    render(<SubwayArrivalStatus arrival={{
+      ...arrival,
+      status: 'no_arrival_data',
+      estimates: [],
+    }} />)
+
+    expect(screen.getByText(
+      '서울시 API에 현재 제공된 열차 도착정보가 없습니다. 운행 중단을 의미하지 않습니다.',
+    )).toBeInTheDocument()
+  })
+})

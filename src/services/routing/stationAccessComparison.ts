@@ -63,13 +63,16 @@ export type StationAccessComparisonResult =
 
 export function findStationAccessComparisonContext(
   itinerary: TransitItinerary,
+  options: { allowFollowingLegs?: boolean } = {},
 ): StationAccessContextResult {
   const visibleLegs = itinerary.legs
     .map((leg, legIndex) => ({ leg, legIndex }))
     .filter(({ leg }) => leg.durationSeconds > 0 || leg.distanceM > 0)
 
   if (
-    visibleLegs.length !== 4 ||
+    (options.allowFollowingLegs
+      ? visibleLegs.length < 4
+      : visibleLegs.length !== 4) ||
     visibleLegs[0].leg.mode !== 'WALK' ||
     visibleLegs[1].leg.mode !== 'BUS' ||
     visibleLegs[2].leg.mode !== 'WALK' ||

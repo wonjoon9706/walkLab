@@ -1,6 +1,7 @@
 export type SubwayArrivalLookupStatus =
   | 'available'
   | 'no_service'
+  | 'no_arrival_data'
   | 'unsupported_station'
   | 'station_match_failed'
   | 'review_required'
@@ -35,18 +36,18 @@ export interface SubwayArrivalInfo {
 
 export interface SubwayArrivalRequest {
   routeName: string | null
-  routeType: number
+  routeType: number | null
   trainType: SubwayTrainType
   boardingStation: {
-    tmapStationId: string
+    providerStationId: string | null
     name: string
   }
   nextStation: {
-    tmapStationId: string
+    providerStationId: string | null
     name: string
   }
   alightingStation: {
-    tmapStationId: string
+    providerStationId: string | null
     name: string
   }
 }

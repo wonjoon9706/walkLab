@@ -17,9 +17,9 @@ function createRequest() {
     headers: { authorization: 'Bearer test-token' },
     body: {
       routeName: '2호선', routeType: 2, trainType: 'normal',
-      boardingStation: { tmapStationId: 'A', name: '건대입구' },
-      nextStation: { tmapStationId: 'B', name: '구의' },
-      alightingStation: { tmapStationId: 'C', name: '잠실' },
+      boardingStation: { providerStationId: 'A', name: '건대입구' },
+      nextStation: { providerStationId: 'B', name: '구의' },
+      alightingStation: { providerStationId: 'C', name: '잠실' },
     },
   } as IncomingMessage & { body: unknown }
 }

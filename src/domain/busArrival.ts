@@ -15,6 +15,11 @@ export interface BusArrivalEstimate {
   arrivalSeconds: number
   remainingStops: number | null
   message: string | null
+  serviceStatus?: 'in_service' | 'departure_waiting'
+  rawStopSequence?: number
+  rawSectionSequence?: number | null
+  /** 0초인데 정류장이 남은 등 원본 필드가 모순되면 ETA 계산에서 제외한다. */
+  arrivalTimeStatus?: 'estimated' | 'review_required'
 }
 
 export type TagoDiagnosticStage =

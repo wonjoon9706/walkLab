@@ -106,15 +106,15 @@ export function createSubwayArrivalRequest(
     routeType: leg.routeType,
     trainType: getTmapSubwayTrainType(leg.routeType, leg.routeName),
     boardingStation: {
-      tmapStationId: boardingStation.providerStopId,
+      providerStationId: boardingStation.providerStopId,
       name: boardingStation.name,
     },
     nextStation: {
-      tmapStationId: nextStation.providerStopId,
+      providerStationId: nextStation.providerStopId,
       name: nextStation.name,
     },
     alightingStation: {
-      tmapStationId: alightingStation.providerStopId,
+      providerStationId: alightingStation.providerStopId,
       name: alightingStation.name,
     },
   }

@@ -70,6 +70,7 @@ export type TransitRouteErrorCode =
   | 'INVALID_REQUEST'
   | 'ROUTE_NOT_FOUND'
   | 'TMAP_AUTH_ERROR'
+  | 'KAKAO_AUTH_ERROR'
   | 'QUOTA_EXCEEDED'
   | 'REQUEST_TIMEOUT'
   | 'NETWORK_ERROR'

@@ -34,6 +34,15 @@ export function BusArrivalStatus({ arrival }: { arrival: BusArrivalInfo }) {
     : arrival.provider === 'seoul'
       ? '서울시 버스 실시간'
       : 'TAGO 실시간'
+  const upcomingArrivals = arrival.status === 'available'
+    ? arrival.upcomingArrivals ?? []
+    : []
+  const departureWaiting = upcomingArrivals.some(
+    (estimate) => estimate.serviceStatus === 'departure_waiting',
+  )
+  const activeArrivals = upcomingArrivals.filter(
+    (estimate) => estimate.serviceStatus !== 'departure_waiting',
+  )
   return (
     <section className="bus-arrival-status" aria-label={`${arrival.stopName} 버스 도착정보`}>
       <strong>{arrival.routeName}</strong>
@@ -41,10 +50,11 @@ export function BusArrivalStatus({ arrival }: { arrival: BusArrivalInfo }) {
       {arrival.status === 'available' &&
       arrival.arrivalSeconds !== null ? (
         <>
-          {arrival.upcomingArrivals !== undefined &&
-          arrival.upcomingArrivals.length > 0 ? (
-            <ol className="bus-arrival-estimates">
-              {arrival.upcomingArrivals.map((estimate) => (
+          {upcomingArrivals.length > 0 ? (
+            <>
+              {activeArrivals.length > 0 && (
+                <ol className="bus-arrival-estimates">
+                  {activeArrivals.map((estimate) => (
                 <li key={estimate.order}>
                   <b>
                     {estimate.order === 1 ? '첫 번째' : '두 번째'} 버스
@@ -53,11 +63,28 @@ export function BusArrivalStatus({ arrival }: { arrival: BusArrivalInfo }) {
                     {estimate.remainingStops !== null && (
                       <span>{estimate.remainingStops}정거장 전</span>
                     )}
-                    <strong>도착 예정 {formatDuration(estimate.arrivalSeconds)}</strong>
+                    <strong>
+                      {estimate.arrivalTimeStatus === 'review_required'
+                        ? '도착시간 확인 필요'
+                        : `도착 예정 ${formatDuration(estimate.arrivalSeconds)}`}
+                    </strong>
                   </span>
+                  {estimate.arrivalTimeStatus === 'review_required' && (
+                    <small>
+                      서울시 시간값과 남은 정류장 수가 일치하지 않습니다.
+                      {estimate.message === null ? '' : ` 원본 안내: ${estimate.message}`}
+                    </small>
+                  )}
                 </li>
-              ))}
-            </ol>
+                  ))}
+                </ol>
+              )}
+              {departureWaiting && (
+                <span className="bus-arrival-unavailable">
+                  출발 대기 중 · 도착 예정시간 미확정
+                </span>
+              )}
+            </>
           ) : (
             <>
               <b>도착 예정 {formatDuration(arrival.arrivalSeconds)}</b>

@@ -94,14 +94,89 @@ describe('서울시 버스 JSON 응답 파서', () => {
         arrivalSeconds: 540,
         remainingStops: 0,
         message: '9분0초후[0번째 전]',
+        serviceStatus: 'in_service',
+        rawStopSequence: 54,
+        rawSectionSequence: 54,
+        arrivalTimeStatus: 'estimated',
       },
       {
         order: 2,
         arrivalSeconds: 813,
         remainingStops: 6,
         message: '13분33초후[6번째 전]',
+        serviceStatus: 'in_service',
+        rawStopSequence: 54,
+        rawSectionSequence: 48,
+        arrivalTimeStatus: 'estimated',
       },
     ])
+  })
+
+  it('0초인데 정류장이 남은 출발대기 값은 누락과 구분해 확인 필요로 보존한다', () => {
+    const estimates = parseSeoulRouteArrivals(response([{
+      busRouteId: '119900016',
+      rtNm: '동작17',
+      stId: '119900260',
+      stNm: '극동아파트112동',
+      staOrd: '3',
+      traTime1: '0',
+      traTime2: '0',
+      sectOrd1: '0',
+      sectOrd2: '0',
+      arrmsg1: '출발대기',
+      arrmsg2: '출발대기',
+    }]))[0].estimates
+
+    expect(estimates).toEqual([
+      {
+        order: 1, arrivalSeconds: 0, remainingStops: null,
+        message: '출발대기', serviceStatus: 'departure_waiting',
+        rawStopSequence: 3, rawSectionSequence: 0,
+        arrivalTimeStatus: 'review_required',
+      },
+      {
+        order: 2, arrivalSeconds: 0, remainingStops: null,
+        message: '출발대기', serviceStatus: 'departure_waiting',
+        rawStopSequence: 3, rawSectionSequence: 0,
+        arrivalTimeStatus: 'review_required',
+      },
+    ])
+  })
+
+  it('시간 필드 누락은 estimate를 만들지 않고 실제 0초·0정거장은 유지한다', () => {
+    const missing = parseSeoulRouteArrivals(response([{
+      busRouteId: 'route', rtNm: '테스트', stId: 'stop-a',
+      stNm: '테스트정류장', staOrd: '3',
+    }]))[0]
+    const zeroAtStop = parseSeoulRouteArrivals(response([{
+      busRouteId: 'route', rtNm: '테스트', stId: 'stop-b',
+      stNm: '테스트정류장', staOrd: '3',
+      arrmsgSec1: '0', sectOrd1: '3', arrmsg1: '도착',
+    }]))[0]
+
+    expect(missing.estimates).toEqual([])
+    expect(zeroAtStop.estimates[0]).toMatchObject({
+      arrivalSeconds: 0,
+      remainingStops: 0,
+      arrivalTimeStatus: 'estimated',
+    })
+  })
+
+  it('0초·0정거장이어도 원본 안내가 출발대기면 즉시 도착으로 보지 않는다', () => {
+    const estimate = parseSeoulRouteArrivals(response([{
+      busRouteId: 'route', rtNm: '테스트', stId: 'stop',
+      stNm: '테스트정류장', staOrd: '3',
+      traTime1: '0', sectOrd1: '3', arrmsg1: '출발 대기',
+    }]))[0].estimates[0]
+
+    expect(estimate).toMatchObject({
+      arrivalSeconds: 0,
+      remainingStops: null,
+      serviceStatus: 'departure_waiting',
+      rawStopSequence: 3,
+      rawSectionSequence: 3,
+      arrivalTimeStatus: 'review_required',
+    })
   })
 
   it('서울시 오류 헤더와 깨진 필수 필드를 정상 빈 결과로 처리하지 않는다', () => {

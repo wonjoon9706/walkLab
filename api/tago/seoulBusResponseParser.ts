@@ -161,13 +161,25 @@ function parseArrivalEstimate(
   )
   const sectionSequence = readNonNegativeInteger(item[`sectOrd${suffix}`])
   if (seconds === null) return null
+  const message = readText(item[`arrmsg${suffix}`])
+  const departureWaiting = message?.normalize('NFKC').replace(/\s+/g, '') ===
+    '출발대기'
+  const remainingStops = departureWaiting || sectionSequence === null
+    ? null
+    : Math.max(0, stopSequence - sectionSequence)
   return {
     order,
     arrivalSeconds: seconds,
-    remainingStops: sectionSequence === null
-      ? null
-      : Math.max(0, stopSequence - sectionSequence),
-    message: readText(item[`arrmsg${suffix}`]),
+    remainingStops,
+    message,
+    serviceStatus: departureWaiting ? 'departure_waiting' as const : 'in_service' as const,
+    rawStopSequence: stopSequence,
+    rawSectionSequence: sectionSequence,
+    arrivalTimeStatus: departureWaiting || (
+      seconds === 0 && remainingStops !== null && remainingStops > 0
+    )
+      ? 'review_required' as const
+      : 'estimated' as const,
   }
 }
 

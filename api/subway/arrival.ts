@@ -147,20 +147,24 @@ function readText(value: unknown, maximumLength = 100): string | null {
 
 function parseStation(value: unknown) {
   if (!isRecord(value)) return null
-  const tmapStationId = readText(value.tmapStationId)
-  const name = readText(value.name)
-  return tmapStationId === null || name === null
+  const providerStationId = value.providerStationId === null
     ? null
-    : { tmapStationId, name }
+    : readText(value.providerStationId)
+  const name = readText(value.name)
+  return (value.providerStationId !== null && providerStationId === null) || name === null
+    ? null
+    : { providerStationId, name }
 }
 
 function parseRequest(value: unknown): SubwayArrivalRequest | null {
   if (!isRecord(value)) return null
   const routeName = value.routeName === null ? null : readText(value.routeName)
-  const routeType = typeof value.routeType === 'number' &&
-    Number.isInteger(value.routeType) && value.routeType >= 0
-    ? value.routeType
-    : null
+  const routeType = value.routeType === null
+    ? null
+    : typeof value.routeType === 'number' &&
+        Number.isInteger(value.routeType) && value.routeType >= 0
+      ? value.routeType
+      : null
   const trainType: SubwayTrainType | null =
     value.trainType === 'normal' || value.trainType === 'express'
       ? value.trainType
@@ -170,7 +174,7 @@ function parseRequest(value: unknown): SubwayArrivalRequest | null {
   const alightingStation = parseStation(value.alightingStation)
   if (
     (value.routeName !== null && routeName === null) ||
-    routeType === null ||
+    (value.routeType !== null && routeType === null) ||
     trainType === null ||
     boardingStation === null ||
     nextStation === null ||
