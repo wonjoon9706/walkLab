@@ -60,7 +60,7 @@ export function calculateTransitWalkingLeg(
   return {
     legIndex,
     distanceM: leg.distanceM,
-    tmapDurationSeconds: leg.durationSeconds,
+    providerDurationSeconds: leg.durationSeconds,
     pureWalkingDurationSeconds: leg.distanceM === 0
       ? 0
       : Math.ceil(leg.distanceM / speedProfile.speedMps),

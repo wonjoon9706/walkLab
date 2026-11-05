@@ -1,7 +1,7 @@
 import type { ServerResponse } from 'node:http'
 import {
   authenticateAllowedTransitUser,
-  isRemoteDeployment,
+  isKakaoTransitEnabled,
   loadLocalEnvironment,
   readJsonBody,
   sendJson,
@@ -18,8 +18,8 @@ export default async function handler(
     sendJson(response, 405, { code: 'INVALID_REQUEST', message: 'POST 요청만 사용할 수 있습니다.' })
     return
   }
-  if (isRemoteDeployment()) {
-    sendJson(response, 503, { code: 'PRODUCTION_DISABLED', message: '출입구 검색은 localhost에서만 사용할 수 있습니다.' })
+  if (!isKakaoTransitEnabled()) {
+    sendJson(response, 503, { code: 'PRODUCTION_DISABLED', message: '이 환경의 카카오 출입구 검색이 활성화되지 않았습니다.' })
     return
   }
   const auth = await authenticateAllowedTransitUser(request)
@@ -58,7 +58,14 @@ export default async function handler(
     })
     const providerBody: unknown = await providerResponse.json().catch(() => null)
     if (!providerResponse.ok || typeof providerBody !== 'object' || providerBody === null) {
-      sendJson(response, 502, { code: 'NETWORK_ERROR', message: '카카오 출입구 검색에 실패했습니다.' })
+      const code = providerResponse.status === 401 || providerResponse.status === 403
+        ? 'KAKAO_AUTH_ERROR' : providerResponse.status === 429 ? 'QUOTA_EXCEEDED' : 'NETWORK_ERROR'
+      sendJson(response, code === 'QUOTA_EXCEEDED' ? 429 : 502, {
+        code,
+        message: code === 'KAKAO_AUTH_ERROR' ? '카카오 장소검색 인증키 또는 권한을 확인해 주세요.'
+          : code === 'QUOTA_EXCEEDED' ? '카카오 장소검색 호출 한도를 초과했습니다.'
+            : '카카오 출입구 검색에 실패했습니다.',
+      })
       return
     }
     const documents = Array.isArray((providerBody as { documents?: unknown }).documents)

@@ -159,12 +159,6 @@ function parseStation(value: unknown) {
 function parseRequest(value: unknown): SubwayArrivalRequest | null {
   if (!isRecord(value)) return null
   const routeName = value.routeName === null ? null : readText(value.routeName)
-  const routeType = value.routeType === null
-    ? null
-    : typeof value.routeType === 'number' &&
-        Number.isInteger(value.routeType) && value.routeType >= 0
-      ? value.routeType
-      : null
   const trainType: SubwayTrainType | null =
     value.trainType === 'normal' || value.trainType === 'express'
       ? value.trainType
@@ -174,7 +168,6 @@ function parseRequest(value: unknown): SubwayArrivalRequest | null {
   const alightingStation = parseStation(value.alightingStation)
   if (
     (value.routeName !== null && routeName === null) ||
-    (value.routeType !== null && routeType === null) ||
     trainType === null ||
     boardingStation === null ||
     nextStation === null ||
@@ -184,7 +177,6 @@ function parseRequest(value: unknown): SubwayArrivalRequest | null {
   }
   return {
     routeName,
-    routeType,
     trainType,
     boardingStation,
     nextStation,
@@ -195,7 +187,7 @@ function parseRequest(value: unknown): SubwayArrivalRequest | null {
 function getRequestKey(userId: string, request: SubwayArrivalRequest): string {
   return [
     userId,
-    request.routeType,
+    request.routeName,
     request.trainType,
     request.boardingStation.name.normalize('NFKC').toLowerCase(),
     request.nextStation.name.normalize('NFKC').toLowerCase(),
@@ -295,7 +287,7 @@ export default async function handler(
     return
   }
 
-  const allowedUserId = process.env.TMAP_TRANSIT_ALLOWED_USER_ID?.trim()
+  const allowedUserId = process.env.TRANSIT_ALLOWED_USER_ID?.trim()
   if (allowedUserId === undefined || !UUID_PATTERN.test(allowedUserId)) {
     sendJson(response, 503, {
       code: 'SERVER_NOT_CONFIGURED',
@@ -313,12 +305,15 @@ export default async function handler(
 
   if (
     process.env.VERCEL_ENV === 'production' ||
+    process.env.VERCEL_ENV === 'preview' ||
     process.env.NODE_ENV === 'production' ||
     process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED !== 'true'
   ) {
     sendJson(response, 503, {
       code: 'PRODUCTION_DISABLED',
-      message: '서울시 지하철 실시간 조회가 로컬에서 활성화되지 않았습니다.',
+      message: process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV === 'production'
+        ? '서울시 지하철의 안전한 운영 통신이 확인되지 않아 실시간 정보를 제공하지 않습니다.'
+        : '서울시 지하철 실시간 조회가 로컬에서 활성화되지 않았습니다.',
     })
     return
   }

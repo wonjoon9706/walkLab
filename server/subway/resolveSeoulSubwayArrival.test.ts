@@ -5,14 +5,13 @@ import { resolveSeoulSubwayArrival } from './resolveSeoulSubwayArrival.js'
 
 const now = new Date('2026-11-03T03:01:00.000Z')
 
-function request(routeType = 2, nextStation = '구의'): SubwayArrivalRequest {
+function request(lineNumber = 2, nextStation = '구의'): SubwayArrivalRequest {
   return {
-    routeName: `${routeType}호선`,
-    routeType,
+    routeName: `${lineNumber}호선`,
     trainType: 'normal',
-    boardingStation: { providerStationId: 'TMAP-A', name: '건대입구역' },
-    nextStation: { providerStationId: 'TMAP-B', name: nextStation },
-    alightingStation: { providerStationId: 'TMAP-C', name: '잠실' },
+    boardingStation: { providerStationId: 'PROVIDER-A', name: '건대입구역' },
+    nextStation: { providerStationId: 'PROVIDER-B', name: nextStation },
+    alightingStation: { providerStationId: 'PROVIDER-C', name: '잠실' },
   }
 }
 
@@ -89,11 +88,11 @@ describe('서울시 지하철 경로 매칭', () => {
   it('남성에서 건대입구 방향은 총신대입구(이수) 별칭을 확인하고 반대 방향을 제외한다', async () => {
     const namseongRequest: SubwayArrivalRequest = {
       routeName: '7호선',
-      routeType: 7,
+
       trainType: 'normal',
-      boardingStation: { providerStationId: 'TMAP-NAMSEONG', name: '남성역' },
-      nextStation: { providerStationId: 'TMAP-ISU', name: '이수' },
-      alightingStation: { providerStationId: 'TMAP-KONKUK', name: '건대입구역' },
+      boardingStation: { providerStationId: 'PROVIDER-NAMSEONG', name: '남성역' },
+      nextStation: { providerStationId: 'PROVIDER-ISU', name: '이수' },
+      alightingStation: { providerStationId: 'PROVIDER-KONKUK', name: '건대입구역' },
     }
     const result = await resolve([
       record({
@@ -115,10 +114,10 @@ describe('서울시 지하철 경로 매칭', () => {
     })
   })
 
-  it('카카오 7호선 요청은 TMAP routeType 없이 노선명과 이수→내방 방향을 검증한다', async () => {
+  it('카카오 7호선 요청은 numeric routeType 없이 노선명과 이수→내방 방향을 검증한다', async () => {
     const kakaoRequest: SubwayArrivalRequest = {
       routeName: '7호선',
-      routeType: null,
+
       trainType: 'normal',
       boardingStation: { providerStationId: null, name: '이수' },
       nextStation: { providerStationId: null, name: '내방' },

@@ -1,23 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  getSeoulSubwayId,
   getSeoulSubwayIdByLineName,
   getSeoulSubwayQueryName,
-  getTmapSubwayTrainType,
   isSameSubwayStationName,
   readDirectionStationName,
 } from './seoulSubwayMatcher'
 
 describe('서울시 지하철 식별 규칙', () => {
-  it('TMAP 노선 유형을 서울시 노선 ID로 변환한다', () => {
-    expect(getSeoulSubwayId(2)).toBe('1002')
-    expect(getSeoulSubwayId(7)).toBe('1007')
-    expect(getSeoulSubwayId(10)).toBe('1002')
-    expect(getSeoulSubwayId(125)).toBe('1032')
-    expect(getSeoulSubwayId(112)).toBeNull()
-    expect(getTmapSubwayTrainType(119, '4호선')).toBe('express')
-  })
-
   it('확실한 역명 차이와 다음 역 방향을 보수적으로 판별한다', () => {
     expect(isSameSubwayStationName('건대입구', '건대입구역')).toBe(true)
     expect(isSameSubwayStationName('총신대입구(이수)', '이수역')).toBe(true)

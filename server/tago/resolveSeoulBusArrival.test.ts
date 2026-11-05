@@ -6,20 +6,20 @@ import { resolveSeoulBusArrival } from './resolveSeoulBusArrival.js'
 
 const request: BusArrivalRequest = {
   routeName: '지선:2222',
-  routeId: 'TMAP-2222',
-  routeType: 12,
+  routeId: 'PROVIDER-2222',
+
   boardingStop: {
-    tmapStopId: 'TMAP-A',
+    providerStopId: 'PROVIDER-A',
     name: '우리은행화양동지점',
     coordinate: { latitude: 37.548142, longitude: 127.066142 },
   },
   nextStop: {
-    tmapStopId: 'TMAP-B',
+    providerStopId: 'PROVIDER-B',
     name: '다음정류장',
     coordinate: { latitude: 37.547, longitude: 127.067 },
   },
   alightingStop: {
-    tmapStopId: 'TMAP-C',
+    providerStopId: 'PROVIDER-C',
     name: '건대입구역사거리·건대병원',
     coordinate: { latitude: 37.54, longitude: 127.07 },
   },

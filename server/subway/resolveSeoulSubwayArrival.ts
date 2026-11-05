@@ -3,7 +3,6 @@ import type {
   SubwayArrivalRequest,
 } from '../../src/domain/subwayArrival.js'
 import {
-  getSeoulSubwayId,
   getSeoulSubwayIdByLineName,
   getSeoulSubwayQueryName,
   isSameSubwayStationName,
@@ -19,7 +18,7 @@ function unavailable(
   fetchedAt: string,
 ): SubwayArrivalInfo {
   return {
-    lineName: request.routeName ?? `${request.routeType ?? ''}호선`,
+    lineName: request.routeName ?? '노선 정보 없음',
     stationName: request.boardingStation.name,
     status,
     estimates: [],
@@ -37,10 +36,7 @@ export async function resolveSeoulSubwayArrival(
 ): Promise<SubwayArrivalInfo> {
   const fetchedAt = now.toISOString()
   const expectedSubwayId = request.routeName === null
-    ? request.routeType === null ? null : getSeoulSubwayId(request.routeType)
-    : getSeoulSubwayIdByLineName(request.routeName) ?? (
-        request.routeType === null ? null : getSeoulSubwayId(request.routeType)
-      )
+    ? null : getSeoulSubwayIdByLineName(request.routeName)
   if (expectedSubwayId === null) {
     return unavailable(request, 'unsupported_station', fetchedAt)
   }
@@ -133,7 +129,7 @@ export async function resolveSeoulSubwayArrival(
     })
 
   return {
-    lineName: request.routeName ?? `${request.routeType ?? ''}호선`,
+    lineName: request.routeName ?? '노선 정보 없음',
     stationName: request.boardingStation.name,
     status: 'available',
     estimates,

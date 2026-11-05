@@ -21,7 +21,7 @@ export default async function handler(
     return
   }
   if (isRemoteDeployment()) {
-    sendJson(response, 503, { code: 'PRODUCTION_DISABLED', message: '서울시 버스 증거 조회는 localhost에서만 사용할 수 있습니다.' })
+    sendJson(response, 503, { code: 'PRODUCTION_DISABLED', message: '서울시 버스의 안전한 운영 통신이 확인되지 않아 정류장·노선 조회를 제공하지 않습니다.' })
     return
   }
   const auth = await authenticateAllowedTransitUser(request)

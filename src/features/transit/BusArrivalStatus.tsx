@@ -6,7 +6,7 @@ const STATUS_MESSAGES: Readonly<Record<BusArrivalInfo['status'], string>> = {
   available: '',
   no_service: '현재 운행 중인 도착정보가 없습니다.',
   unsupported_region: 'TAGO 실시간 도착정보를 지원하지 않는 지역입니다.',
-  stop_match_failed: 'TMAP 정류장과 TAGO 정류장을 연결하지 못했습니다.',
+  stop_match_failed: '경로 정류장과 TAGO 정류장을 연결하지 못했습니다.',
   stop_match_review_required: '같은 이름의 정류장이 있어 정류장 확인이 필요합니다.',
   api_error: '실시간 도착정보를 불러오지 못했습니다.',
 }
@@ -111,13 +111,13 @@ export function BusArrivalStatus({ arrival }: { arrival: BusArrivalInfo }) {
             <dd>{arrival.diagnostics.lastStage}</dd>
             <dt>판정</dt>
             <dd>{arrival.diagnostics.outcomeReason}</dd>
-            <dt>TMAP 승차 정류장</dt>
+            <dt>경로 승차 정류장</dt>
             <dd>
-              {arrival.diagnostics.tmap.boardingStopName}
+              {arrival.diagnostics.route.boardingStopName}
               {' · '}
-              {arrival.diagnostics.tmap.boardingCoordinate.latitude.toFixed(6)},
+              {arrival.diagnostics.route.boardingCoordinate.latitude.toFixed(6)},
               {' '}
-              {arrival.diagnostics.tmap.boardingCoordinate.longitude.toFixed(6)}
+              {arrival.diagnostics.route.boardingCoordinate.longitude.toFixed(6)}
             </dd>
             <dt>조회 건수</dt>
             <dd>

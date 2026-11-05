@@ -7,7 +7,7 @@ import {
 
 const MAX_STOP_DISTANCE_M = 120
 
-interface TmapStopReference {
+interface RouteStopReference {
   name: string
   coordinate: GeoCoordinate
 }
@@ -41,13 +41,13 @@ export type TagoRouteDirectionResult =
         | 'ROUTE_STOPS_EMPTY'
     }
 
-function matchesTmapStop(
+function matchesRouteStop(
   tagoStop: TagoRouteStop,
-  tmapStop: TmapStopReference,
+  routeStop: RouteStopReference,
 ): boolean {
   return tagoStop.coordinate !== null &&
-    isSameStopName(tagoStop.name, tmapStop.name) &&
-    getCoordinateDistanceMeters(tagoStop.coordinate, tmapStop.coordinate) <=
+    isSameStopName(tagoStop.name, routeStop.name) &&
+    getCoordinateDistanceMeters(tagoStop.coordinate, routeStop.coordinate) <=
       MAX_STOP_DISTANCE_M
 }
 
@@ -58,8 +58,8 @@ function hasDuplicate<T>(values: T[]): boolean {
 export function verifyTagoRouteDirection(
   routeId: string,
   boardingCandidate: TagoStopCandidate,
-  boardingStop: TmapStopReference,
-  alightingStop: TmapStopReference,
+  boardingStop: RouteStopReference,
+  alightingStop: RouteStopReference,
   routeStops: TagoRouteStop[],
 ): TagoRouteDirectionResult {
   if (routeStops.length === 0) {
@@ -85,7 +85,7 @@ export function verifyTagoRouteDirection(
 
   const boardingMatches = routeStops.filter((stop) =>
     stop.nodeId === boardingCandidate.nodeId &&
-    matchesTmapStop(stop, boardingStop),
+    matchesRouteStop(stop, boardingStop),
   )
   if (boardingMatches.length === 0) {
     return { status: 'failed', reason: 'BOARDING_STOP_NOT_FOUND' }
@@ -95,7 +95,7 @@ export function verifyTagoRouteDirection(
   }
 
   const alightingMatches = routeStops.filter((stop) =>
-    matchesTmapStop(stop, alightingStop),
+    matchesRouteStop(stop, alightingStop),
   )
   if (alightingMatches.length === 0) {
     return { status: 'failed', reason: 'ALIGHTING_STOP_NOT_FOUND' }

@@ -23,7 +23,7 @@ function leg(
     durationSeconds: mode === 'WALK' ? 300 : 183,
     routeName: mode === 'BUS' ? '2222' : mode === 'SUBWAY' ? '7호선' : null,
     routeColor: null,
-    routeType: null,
+
     startName: '시작',
     endName: '끝',
     coordinates: [],
@@ -129,7 +129,7 @@ describe('T2-4A 마지막 버스 생략 비교', () => {
     ).status).toBe('coordinate_mismatch')
   })
 
-  it('TMAP 대기시간 없이 G7 보행과 버스 구간만 기본 이동시간으로 합산한다', () => {
+  it('경로 대기시간 없이 G7 보행과 버스 구간만 기본 이동시간으로 합산한다', () => {
     const route = itinerary()
     const result = compareLastBusWithDirectWalk(
       route, readyContext(route), directRoute(), speedModel(),

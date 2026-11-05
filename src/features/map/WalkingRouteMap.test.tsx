@@ -152,21 +152,21 @@ describe('WalkingRouteMap', () => {
     expect(fake.removedOverlays).toEqual([null, null, null])
   })
 
-  it('카카오와 TMAP 비교 경로를 서로 다른 선으로 함께 표시한다', async () => {
+  it('주 도보 경로와 참고 경로를 서로 다른 선으로 함께 표시한다', async () => {
     const fake = createFakeMaps()
     loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
     const kakaoCoordinates = [
       { latitude: 37.5, longitude: 127.1 },
       { latitude: 37.501, longitude: 127.101 },
     ]
-    const tmapCoordinates = [
+    const comparisonCoordinates = [
       { latitude: 37.5, longitude: 127.1 },
       { latitude: 37.502, longitude: 127.102 },
     ]
     render(
       <WalkingRouteMap
         coordinates={kakaoCoordinates}
-        comparisonCoordinates={tmapCoordinates}
+        comparisonCoordinates={comparisonCoordinates}
         start={kakaoCoordinates[0]}
         destination={kakaoCoordinates[1]}
       />,
@@ -178,7 +178,7 @@ describe('WalkingRouteMap', () => {
       expect.objectContaining({ strokeColor: '#d97706' }),
     ]))
     expect(screen.getByText('카카오 도보 경로')).toBeInTheDocument()
-    expect(screen.getByText('TMAP WALK 경로')).toBeInTheDocument()
+    expect(screen.getByText('참고 도보 경로')).toBeInTheDocument()
   })
 
   it('SDK 로딩 실패를 안내한다', async () => {

@@ -17,7 +17,6 @@
     "src/domain/walkingSpeedModel.ts",
     "src/domain/transitRoute.ts",
     "src/services/routing/kakaoWalkingRouteParser.ts",
-    "src/services/routing/tmapTransitRouteParser.ts",
     "src/services/transitArrival/tagoResponseParser.ts",
     "src/services/transitArrival/tagoRouteDirection.ts",
     "src/services/transitArrival/tagoStopMatcher.ts"

@@ -24,16 +24,16 @@ function createRequest() {
     headers: { authorization: 'Bearer test-token' },
     body: {
       routeName: '지선:2222',
-      routeId: 'TMAP-2222',
-      routeType: 12,
+      routeId: 'PROVIDER-2222',
+
       boardingStop: {
-        tmapStopId: 'TMAP-A',
+        providerStopId: 'PROVIDER-A',
         name: '우리은행화양동지점',
         coordinate: { latitude: 37.548142, longitude: 127.066142 },
       },
       nextStop: null,
       alightingStop: {
-        tmapStopId: 'TMAP-C',
+        providerStopId: 'PROVIDER-C',
         name: '건대입구역사거리·건대병원',
         coordinate: { latitude: 37.54, longitude: 127.07 },
       },
@@ -57,7 +57,7 @@ beforeEach(() => {
   resetTagoBusArrivalStateForTests()
   process.env.SUPABASE_URL = 'https://example.supabase.co'
   process.env.SUPABASE_PUBLISHABLE_KEY = 'publishable-key'
-  process.env.TMAP_TRANSIT_ALLOWED_USER_ID = USER_ID
+  process.env.TRANSIT_ALLOWED_USER_ID = USER_ID
   process.env.TAGO_SERVICE_KEY = 'server-only-key'
   process.env.SEOUL_BUS_API_LOCAL_ENABLED = 'true'
   delete process.env.VERCEL_ENV
@@ -71,7 +71,7 @@ afterEach(() => {
   vi.clearAllMocks()
   delete process.env.SEOUL_BUS_API_LOCAL_ENABLED
   delete process.env.TAGO_SERVICE_KEY
-  delete process.env.TMAP_TRANSIT_ALLOWED_USER_ID
+  delete process.env.TRANSIT_ALLOWED_USER_ID
 })
 
 describe('서울시 버스 서버 통합', () => {

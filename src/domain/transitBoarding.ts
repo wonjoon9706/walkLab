@@ -13,10 +13,10 @@ export type LiveDataFreshness = 'fresh' | 'stale' | 'missing'
 export interface TransitWalkingLegEstimate {
   legIndex: number
   distanceM: number
-  tmapDurationSeconds: number
+  providerDurationSeconds: number
   pureWalkingDurationSeconds: number
   speedProfile: WalkingSpeedProfile
-  /** TMAP sectionTime의 대기·접근시간 포함 범위가 확인되지 않아 두 값을 합산하지 않는다. */
+  /** ?? sectionTime의 대기·접근시간 포함 범위가 확인되지 않아 두 값을 합산하지 않는다. */
   unverifiedOverheadSeconds: null
 }
 

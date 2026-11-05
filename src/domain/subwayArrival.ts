@@ -36,7 +36,6 @@ export interface SubwayArrivalInfo {
 
 export interface SubwayArrivalRequest {
   routeName: string | null
-  routeType: number | null
   trainType: SubwayTrainType
   boardingStation: {
     providerStationId: string | null

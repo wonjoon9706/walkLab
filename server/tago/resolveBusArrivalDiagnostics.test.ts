@@ -5,20 +5,20 @@ import { resolveTagoBusArrival } from './resolveBusArrival.js'
 
 const request: BusArrivalRequest = {
   routeName: '지선:2222',
-  routeId: 'TMAP-2222',
-  routeType: 12,
+  routeId: 'PROVIDER-2222',
+
   boardingStop: {
-    tmapStopId: 'TMAP-A',
+    providerStopId: 'PROVIDER-A',
     name: '성동세무서앞',
     coordinate: { latitude: 37.548, longitude: 127.055 },
   },
   nextStop: {
-    tmapStopId: 'TMAP-B',
+    providerStopId: 'PROVIDER-B',
     name: '다음정류장',
     coordinate: { latitude: 37.549, longitude: 127.056 },
   },
   alightingStop: {
-    tmapStopId: 'TMAP-C',
+    providerStopId: 'PROVIDER-C',
     name: '건대입구역사거리·건대병원',
     coordinate: { latitude: 37.54, longitude: 127.07 },
   },

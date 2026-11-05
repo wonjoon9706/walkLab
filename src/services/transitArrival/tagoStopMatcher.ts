@@ -94,16 +94,16 @@ export function filterTagoStopCandidatesForRouteLookup(
   leg: TransitRouteLeg,
   candidates: TagoStopCandidate[],
 ): TagoStopCandidate[] {
-  const tmapStops = findBoardingStops(leg)
-  if (tmapStops === null) return []
+  const routeStops = findBoardingStops(leg)
+  if (routeStops === null) return []
   return candidates.filter((candidate) =>
-    getCoordinateDistanceMeters(tmapStops.boarding.coordinate, candidate.coordinate) <=
+    getCoordinateDistanceMeters(routeStops.boarding.coordinate, candidate.coordinate) <=
       MAX_MATCH_DISTANCE_M &&
-    isSameStopName(candidate.name, tmapStops.boarding.name),
+    isSameStopName(candidate.name, routeStops.boarding.name),
   )
 }
 
-export function matchTmapBusStopToTago(
+export function matchBusStopToTago(
   leg: TransitRouteLeg,
   candidates: TagoStopCandidate[],
   options: TagoStopMatchOptions = {},
@@ -111,8 +111,8 @@ export function matchTmapBusStopToTago(
   if (leg.mode !== 'BUS') {
     return { status: 'failed', reason: 'ROUTE_MISMATCH' }
   }
-  const tmapStops = findBoardingStops(leg)
-  if (tmapStops === null || leg.routeName === null) {
+  const routeStops = findBoardingStops(leg)
+  if (routeStops === null || leg.routeName === null) {
     return { status: 'failed', reason: 'NO_NEARBY_STOP' }
   }
 
@@ -120,7 +120,7 @@ export function matchTmapBusStopToTago(
     .map((candidate) => ({
       candidate,
       distanceM: getCoordinateDistanceMeters(
-        tmapStops.boarding.coordinate,
+        routeStops.boarding.coordinate,
         candidate.coordinate,
       ),
     }))
@@ -130,7 +130,7 @@ export function matchTmapBusStopToTago(
   }
 
   const sameName = nearby.filter(({ candidate }) =>
-    isSameStopName(candidate.name, tmapStops.boarding.name),
+    isSameStopName(candidate.name, routeStops.boarding.name),
   )
   if (sameName.length === 0) {
     return { status: 'failed', reason: 'STOP_NAME_MISMATCH' }
@@ -146,17 +146,17 @@ export function matchTmapBusStopToTago(
     return { status: 'failed', reason: 'ROUTE_MISMATCH' }
   }
   const hasDirectionEvidence =
-    tmapStops.next !== null &&
+    routeStops.next !== null &&
     sameRoute.some(({ route }) => route.nextStopCoordinate !== null)
-  if (hasDirectionEvidence && tmapStops.next !== null) {
-    const tmapBearing = bearingDegrees(
-      tmapStops.boarding.coordinate,
-      tmapStops.next.coordinate,
+  if (hasDirectionEvidence && routeStops.next !== null) {
+    const routeBearing = bearingDegrees(
+      routeStops.boarding.coordinate,
+      routeStops.next.coordinate,
     )
     const directionMatches = sameRoute.filter(({ candidate, route }) => {
       if (route.nextStopCoordinate === null) return false
       const tagoBearing = bearingDegrees(candidate.coordinate, route.nextStopCoordinate)
-      return directionDifferenceDegrees(tmapBearing, tagoBearing) <=
+      return directionDifferenceDegrees(routeBearing, tagoBearing) <=
         MAX_DIRECTION_DIFFERENCE_DEGREES
     })
     if (directionMatches.length === 1) {

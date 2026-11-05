@@ -4,16 +4,16 @@ import { createBusArrivalClient } from './busArrivalClient'
 
 const request: BusArrivalRequest = {
   routeName: '직행좌석:7800',
-  routeId: 'TMAP-7800',
-  routeType: 4,
+  routeId: 'PROVIDER-7800',
+
   boardingStop: {
-    tmapStopId: 'TMAP-A',
+    providerStopId: 'PROVIDER-A',
     name: '사당역9번출구앞',
     coordinate: { latitude: 37.478, longitude: 126.982 },
   },
   nextStop: null,
   alightingStop: {
-    tmapStopId: 'TMAP-B',
+    providerStopId: 'PROVIDER-B',
     name: '의왕톨게이트',
     coordinate: { latitude: 37.45, longitude: 126.982 },
   },

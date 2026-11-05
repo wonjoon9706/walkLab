@@ -88,7 +88,8 @@ export function KakaoFirstBoardingSummary({ route, access, arrival, speedModel, 
           ? '경로 선택 시 첫 승차 도착정보 확인'
           : '도착정보 확인 중 · 탑승 여부 확인 필요'}</span>
       ) : arrival.error !== null ? (
-        <span>{arrival.issue === 'boarding_unverified' ? '승차 위치·노선 확인 필요'
+        <span>{arrival.issue === 'service_disabled' ? '이 환경에서는 실시간 도착정보를 제공하지 않습니다'
+          : arrival.issue === 'boarding_unverified' ? '승차 위치·노선 확인 필요'
           : arrival.issue === 'direction_unverified' ? '정류장·운행 방향 재확인 필요'
             : arrival.issue === 'timeout' ? '도착정보 응답 지연 · 새로고침으로 확인해 주세요'
               : '실시간 제공기관 조회 실패 · 새로고침으로 확인해 주세요'}</span>

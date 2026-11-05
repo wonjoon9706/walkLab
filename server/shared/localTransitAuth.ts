@@ -10,7 +10,7 @@ export interface RequestWithBody extends IncomingMessage {
 }
 
 export function loadLocalEnvironment(): void {
-  if (process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview') {
+  if (isRemoteDeployment()) {
     return
   }
   try {
@@ -74,7 +74,7 @@ export async function authenticateAllowedTransitUser(
   if (error !== null || data.user === null) {
     return { ok: false, statusCode: 401, code: 'AUTH_TOKEN_INVALID', message: '로그인 인증정보가 만료됐거나 올바르지 않습니다.' }
   }
-  const allowedUserId = process.env.TMAP_TRANSIT_ALLOWED_USER_ID?.trim()
+  const allowedUserId = process.env.TRANSIT_ALLOWED_USER_ID?.trim()
   if (allowedUserId === undefined || !UUID_PATTERN.test(allowedUserId)) {
     return { ok: false, statusCode: 503, code: 'SERVER_NOT_CONFIGURED', message: '대중교통 허용 사용자 설정이 올바르지 않습니다.' }
   }
@@ -85,7 +85,13 @@ export async function authenticateAllowedTransitUser(
 }
 
 export function isRemoteDeployment(): boolean {
-  return process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview'
+  return process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview' ||
+    process.env.NODE_ENV === 'production'
+}
+
+export function isKakaoTransitEnabled(): boolean {
+  // 공개 VITE 설정은 UI 선택에만 사용하며 서버 허용 여부에는 사용하지 않는다.
+  return !isRemoteDeployment() || process.env.KAKAO_TRANSIT_PRODUCTION_ENABLED === 'true'
 }
 
 export function parseCoordinate(value: unknown): {

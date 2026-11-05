@@ -12,7 +12,7 @@ import {
   getCoordinateDistanceMeters,
   isSameBusRouteName,
   isSameStopName,
-  matchTmapBusStopToTago,
+  matchBusStopToTago,
 } from '../../src/services/transitArrival/tagoStopMatcher.js'
 import { verifyTagoRouteDirection } from '../../src/services/transitArrival/tagoRouteDirection.js'
 import type { TagoProvider } from './tagoProvider.js'
@@ -31,14 +31,13 @@ function toTransitLeg(request: BusArrivalRequest): TransitRouteLeg {
     routeName: request.routeName,
     routeId: request.routeId,
     routeColor: null,
-    routeType: request.routeType,
     startName: request.boardingStop.name,
     endName: request.alightingStop.name,
     coordinates: [],
     stops: [
       {
         index: 0,
-        providerStopId: request.boardingStop.tmapStopId,
+        providerStopId: request.boardingStop.providerStopId,
         name: request.boardingStop.name,
         coordinate: request.boardingStop.coordinate,
       },
@@ -46,7 +45,7 @@ function toTransitLeg(request: BusArrivalRequest): TransitRouteLeg {
         ? []
         : [{
             index: 1,
-            providerStopId: request.nextStop.tmapStopId,
+            providerStopId: request.nextStop.providerStopId,
             name: request.nextStop.name,
             coordinate: request.nextStop.coordinate,
           }]),
@@ -108,7 +107,7 @@ export async function resolveTagoBusArrival(
           source: 'live',
           lastStage: 'nearby_stops',
           outcomeReason: 'IN_PROGRESS',
-          tmap: {
+          route: {
             routeName: request.routeName,
             boardingStopName: request.boardingStop.name,
             boardingCoordinate: request.boardingStop.coordinate,
@@ -269,7 +268,7 @@ export async function resolveTagoBusArrival(
     )
   }
 
-  const match = matchTmapBusStopToTago(leg, candidates, {
+  const match = matchBusStopToTago(leg, candidates, {
     // 노선 경유 순서에서 검증된 다음 정류장 방향만 사용한다.
     requireDirectionEvidence: true,
   })

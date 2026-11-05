@@ -1,34 +1,5 @@
 import type { SubwayTrainType } from '../../domain/subwayArrival.js'
 
-const SEOUL_SUBWAY_ID_BY_TMAP_TYPE: Readonly<Record<number, string>> = {
-  1: '1001',
-  2: '1002',
-  3: '1003',
-  4: '1004',
-  5: '1005',
-  6: '1005',
-  7: '1007',
-  8: '1008',
-  9: '1009',
-  10: '1002',
-  11: '1002',
-  100: '1075',
-  101: '1065',
-  104: '1063',
-  108: '1067',
-  109: '1077',
-  113: '1092',
-  117: '1001',
-  118: '1001',
-  119: '1004',
-  120: '1009',
-  121: '1075',
-  122: '1063',
-  123: '1067',
-  124: '1065',
-  125: '1032',
-}
-
 const SEOUL_SUBWAY_ID_BY_LINE_NAME: Readonly<Record<string, string>> = {
   '1호선': '1001',
   '2호선': '1002',
@@ -41,7 +12,6 @@ const SEOUL_SUBWAY_ID_BY_LINE_NAME: Readonly<Record<string, string>> = {
   '9호선': '1009',
 }
 
-const EXPRESS_TMAP_TYPES = new Set([117, 118, 119, 120, 121, 122, 123, 124])
 
 const SEOUL_SUBWAY_QUERY_ALIASES: Readonly<Record<string, string>> = {
   이수: '총신대입구(이수)',
@@ -50,28 +20,13 @@ const SEOUL_SUBWAY_QUERY_ALIASES: Readonly<Record<string, string>> = {
 }
 
 const SEOUL_SUBWAY_STATION_NAME_ALIASES: Readonly<Record<string, string>> = {
-  // 서울시 API는 7호선 환승역을 총신대입구(이수)로, TMAP은 이수로 제공한다.
+  // 서울시 API와 경로 공급자의 환승역 표기 차이를 명시적 별칭으로만 연결한다.
   총신대입구: '이수',
-}
-
-export function getSeoulSubwayId(routeType: number): string | null {
-  return SEOUL_SUBWAY_ID_BY_TMAP_TYPE[routeType] ?? null
 }
 
 export function getSeoulSubwayIdByLineName(lineName: string): string | null {
   const normalized = lineName.normalize('NFKC').replace(/\s+/g, '')
   return SEOUL_SUBWAY_ID_BY_LINE_NAME[normalized] ?? null
-}
-
-export function getTmapSubwayTrainType(
-  routeType: number,
-  routeName: string | null,
-): SubwayTrainType {
-  return EXPRESS_TMAP_TYPES.has(routeType) ||
-    routeName?.normalize('NFKC').includes('급행') === true ||
-    routeName?.normalize('NFKC').includes('특급') === true
-    ? 'express'
-    : 'normal'
 }
 
 export function normalizeSubwayStationName(value: string): string {

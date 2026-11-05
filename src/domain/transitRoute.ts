@@ -1,4 +1,4 @@
-import type { GeoCoordinate, WalkingSpeedProfile } from './walkingRoute.js'
+import type { GeoCoordinate } from './walkingRoute.js'
 
 export type TransitMode =
   | 'WALK'
@@ -23,7 +23,6 @@ export interface TransitRouteLeg {
   routeName: string | null
   routeId?: string | null
   routeColor: string | null
-  routeType: number | null
   startName: string
   endName: string
   startCoordinate?: GeoCoordinate | null
@@ -43,22 +42,6 @@ export interface TransitItinerary {
   legs: TransitRouteLeg[]
 }
 
-export interface TransitRouteResult {
-  itineraries: TransitItinerary[]
-  provider: 'tmap-transit'
-  requestedAt: string
-}
-
-export interface TransitEtaEstimate {
-  providerDurationSeconds: number
-  appliedDurationSeconds: number
-  personalizedWalkDurationSeconds: number | null
-  personalizationScope: 'pure_walking_reference' | 'provider_fallback'
-  unverifiedWalkOverheadSeconds: null
-  arrivalAt: string
-  speedProfile: WalkingSpeedProfile
-}
-
 export type TransitRouteErrorCode =
   | 'AUTH_SESSION_MISSING'
   | 'AUTH_HEADER_MISSING'
@@ -69,7 +52,6 @@ export type TransitRouteErrorCode =
   | 'PRODUCTION_DISABLED'
   | 'INVALID_REQUEST'
   | 'ROUTE_NOT_FOUND'
-  | 'TMAP_AUTH_ERROR'
   | 'KAKAO_AUTH_ERROR'
   | 'QUOTA_EXCEEDED'
   | 'REQUEST_TIMEOUT'

@@ -12,7 +12,6 @@ const expectedEndpoints = [
   'kakao/walking-route.ts',
   'subway/arrival.ts',
   'tago/bus-arrival.ts',
-  'tmap/transit-routes.ts',
 ].sort()
 const projectRoot = process.cwd()
 const apiRoot = resolve(projectRoot, 'api')

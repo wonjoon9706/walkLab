@@ -4,9 +4,7 @@ import {
   type SubwayArrivalInfo,
   type SubwayArrivalRequest,
 } from '../../domain/subwayArrival'
-import type { TransitRouteLeg } from '../../domain/transitRoute'
 import { getSupabaseAccessToken } from '../routing/walkingRouteClient'
-import { getTmapSubwayTrainType } from './seoulSubwayMatcher'
 
 const CLIENT_CACHE_TTL_MS = 30_000
 
@@ -82,44 +80,6 @@ function readErrorCode(value: unknown): SubwayArrivalErrorCode {
     : 'NETWORK_ERROR'
 }
 
-export function createSubwayArrivalRequest(
-  leg: TransitRouteLeg,
-): SubwayArrivalRequest {
-  const boardingStation = leg.stops?.[0]
-  const nextStation = leg.stops?.[1]
-  const alightingStation = leg.stops?.at(-1)
-  if (
-    leg.mode !== 'SUBWAY' ||
-    leg.routeType === null ||
-    boardingStation === undefined ||
-    nextStation === undefined ||
-    alightingStation === undefined ||
-    boardingStation === alightingStation
-  ) {
-    throw new SubwayArrivalError(
-      'INVALID_REQUEST',
-      'TMAP 지하철 노선 또는 승차·다음·하차역 정보가 없습니다.',
-    )
-  }
-  return {
-    routeName: leg.routeName,
-    routeType: leg.routeType,
-    trainType: getTmapSubwayTrainType(leg.routeType, leg.routeName),
-    boardingStation: {
-      providerStationId: boardingStation.providerStopId,
-      name: boardingStation.name,
-    },
-    nextStation: {
-      providerStationId: nextStation.providerStopId,
-      name: nextStation.name,
-    },
-    alightingStation: {
-      providerStationId: alightingStation.providerStopId,
-      name: alightingStation.name,
-    },
-  }
-}
-
 export function createSubwayArrivalClient(
   dependencies: SubwayArrivalClientDependencies,
 ) {
@@ -131,7 +91,7 @@ export function createSubwayArrivalClient(
       request: SubwayArrivalRequest,
     ): Promise<SubwayArrivalInfo> {
       const key = JSON.stringify([
-        request.routeType,
+        request.routeName,
         request.trainType,
         request.boardingStation.name,
         request.nextStation.name,

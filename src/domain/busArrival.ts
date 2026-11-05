@@ -52,7 +52,7 @@ export interface TagoBusArrivalDiagnostics {
   source: 'live'
   lastStage: TagoDiagnosticStage
   outcomeReason: string
-  tmap: {
+  route: {
     routeName: string
     boardingStopName: string
     boardingCoordinate: GeoCoordinate
@@ -138,19 +138,18 @@ export interface TagoRouteStopPage {
 export interface BusArrivalRequest {
   routeName: string
   routeId: string | null
-  routeType: number | null
   boardingStop: {
-    tmapStopId: string
+    providerStopId: string
     name: string
     coordinate: GeoCoordinate
   }
   nextStop: {
-    tmapStopId: string
+    providerStopId: string
     name: string
     coordinate: GeoCoordinate
   } | null
   alightingStop: {
-    tmapStopId: string
+    providerStopId: string
     name: string
     coordinate: GeoCoordinate
   }

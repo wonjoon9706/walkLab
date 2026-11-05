@@ -543,7 +543,7 @@ export function WalkingRouteMap({
           <span className="filtered-route-key">카카오 도보 경로</span>
         )}
         {stableComparisonCoordinates.length >= 2 && (
-          <span className="comparison-route-key">TMAP WALK 경로</span>
+          <span className="comparison-route-key">참고 도보 경로</span>
         )}
         {start !== null && <span className="start-point-key">출발지</span>}
         {destination !== null && <span className="end-point-key">목적지</span>}

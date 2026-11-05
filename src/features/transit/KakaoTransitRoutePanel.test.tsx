@@ -205,7 +205,7 @@ describe('카카오 개인화 ETA 화면 연결', () => {
     resolveAccessMock.mockReset().mockResolvedValue(accessResult)
     resolveEgressMock.mockReset().mockResolvedValue(egressResult)
   })
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
   it('실제 앱과 같은 StrictMode 재설정 후에도 요청 결과를 표시한다', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(result)))
@@ -297,7 +297,9 @@ describe('카카오 개인화 ETA 화면 연결', () => {
     expect(kakaoTransitRouteClient.getTransitRoutes).toHaveBeenCalledTimes(2)
   })
 
-  it('15개 목록을 즉시 표시하고 대표 3개만 계산한 뒤 선택한 나머지 경로를 한 번 계산한다', async () => {
+  it.each([true, false])('DEV=%s에서도 3개 카드·12개 더보기·선택 계산 캐시를 유지한다', async (dev) => {
+    vi.stubEnv('DEV', dev)
+    vi.stubEnv('PROD', !dev)
     const routes = Array.from({ length: 15 }, (_, index) => ({
       ...result.routes[0],
       id: `route-${index}`,

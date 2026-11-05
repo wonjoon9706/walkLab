@@ -918,6 +918,12 @@ export function KakaoTransitRoutePanel({
         <TransitAccessRecordingStatus state={accessRecording.state} target={recordingTarget}
           active={accessRecording.isActive} canStart={false} onStart={() => undefined} onStop={() => { void accessRecording.finish() }} />
       )}
+      {import.meta.env.PROD && (
+        <p className="auth-message warning-card">
+          서울시 버스 정류장 검증·실시간 도착정보는 운영 통신 검증 전까지 제공되지 않습니다.
+          일부 도보·개인화 시간과 자동 도착 감지를 확인하지 못할 수 있습니다.
+        </p>
+      )}
       {view === 'list' && (
         <>
           {status === 'loading' && (

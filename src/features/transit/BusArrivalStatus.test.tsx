@@ -34,7 +34,7 @@ describe('버스 도착정보 표시', () => {
   it.each([
     ['no_service', '현재 운행 중인 도착정보가 없습니다.'],
     ['unsupported_region', 'TAGO 실시간 도착정보를 지원하지 않는 지역입니다.'],
-    ['stop_match_failed', 'TMAP 정류장과 TAGO 정류장을 연결하지 못했습니다.'],
+    ['stop_match_failed', '경로 정류장과 TAGO 정류장을 연결하지 못했습니다.'],
     ['stop_match_review_required', '같은 이름의 정류장이 있어 정류장 확인이 필요합니다.'],
     ['api_error', '실시간 도착정보를 불러오지 못했습니다.'],
   ] as const)('%s 상태를 구분해 표시한다', (status, message) => {
