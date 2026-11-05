@@ -106,6 +106,116 @@ function setup(requestRoute = vi.fn().mockResolvedValue(route)) {
 }
 
 describe('실시간 안내 관리자', () => {
+  it('비정상 미래 시각이나 변환 불가 timestamp가 이후 정상 GPS를 막지 않는다', () => {
+    const test = setup()
+    test.start()
+    test.position(createPosition(0, 0, 0))
+    test.position(createPosition(0, 0.00001, 86_400_000))
+    expect(() => test.position(createPosition(0, 0.00001, 1e99))).not.toThrow()
+    test.setNow(2_000)
+    test.position(createPosition(0, 0.00002, 2_000))
+    expect(test.manager.getState().lastPositionAt).toBe(new Date(2_000).toISOString())
+    expect(test.manager.getState().currentPosition?.longitude).toBe(0.00002)
+  })
+  it('동일 경로·위치에서도 안정된 현재 속도가 빠르면 남은 ETA가 짧아진다', () => {
+    const slow = setup()
+    const fast = setup()
+    slow.start(); fast.start()
+    for (let i = 0; i < 10; i += 1) {
+      const timestamp = i * 2_000
+      for (const [test, speed] of [[slow, 0.8], [fast, 2]] as const) {
+        test.setNow(timestamp)
+        test.position(createPosition(0, i * 0.00002, timestamp, 5, speed))
+      }
+    }
+    expect(slow.manager.getState().remainingDistanceM).toBe(fast.manager.getState().remainingDistanceM)
+    expect(slow.manager.getState().remainingDurationSeconds!).toBeGreaterThan(fast.manager.getState().remainingDurationSeconds!)
+    expect(slow.manager.getState().pace).toBe('slower')
+    expect(fast.manager.getState().pace).toBe('faster')
+  })
+  it('같은 GPS 응답은 속도 관측과 수신 신선도를 갱신하지 않는다', () => {
+    const test = setup()
+    test.start()
+    const fix = createPosition(0, 0.0001, 0)
+    test.position(fix)
+    for (let i = 1; i <= 12; i += 1) {
+      test.setNow(i * 2_000)
+      test.position(fix)
+      test.runStaleCheck()
+    }
+    expect(test.manager.getState()).toMatchObject({ status: 'stale', recentSpeedMps: null, pace: 'checking' })
+  })
+
+  it('장치 속도가 정상이더라도 좌표 도약이면 현재 속도 표시를 보류한다', () => {
+    const test = setup()
+    test.start()
+    test.position(createPosition(0, 0, 0, 5, 1.4))
+    test.setNow(1_000)
+    test.position(createPosition(0.01, 0, 1_000, 5, 1.4))
+    expect(test.manager.getState()).toMatchObject({ status: 'gps_unstable', recentSpeedMps: null, pace: 'checking' })
+    expect(test.manager.getState().remainingDistanceM).toBeCloseTo(222.39, 0)
+  })
+
+  it('참고 경로 이탈은 직선 ETA나 추가 API 요청으로 처리하지 않는다', () => {
+    const test = setup()
+    test.manager.start({ route, destination: route.coordinates.at(-1)!, baselineSpeed,
+      forceInitialReroute: false, allowReroute: false, isReferenceRoute: true })
+    for (let i = 0; i < 4; i += 1) {
+      test.setNow(i * 2_000)
+      test.position(createPosition(0.001, i * 0.00001, i * 2_000))
+    }
+    expect(test.manager.getState()).toMatchObject({ status: 'off_route', remainingDurationSeconds: null,
+      remainingDistanceM: null, arrivalAt: null, isReferenceRoute: true })
+    expect(test.requestRoute).not.toHaveBeenCalled()
+  })
+
+  it('화면 복귀 후 숨겨진 동안의 GPS나 과거 관측을 현재 속도로 재사용하지 않는다', () => {
+    const test = setup()
+    test.start()
+    for (let i = 0; i < 10; i += 1) {
+      test.setNow(i * 2_000)
+      test.position(createPosition(0, i * 0.00002, i * 2_000))
+    }
+    expect(test.manager.getState().pace).toBe('slower')
+    test.manager.setVisible(false)
+    test.setNow(40_000)
+    test.position(createPosition(0, 0.0004, 40_000))
+    test.manager.setVisible(true)
+    test.position(createPosition(0, 0.0003, 30_000))
+    expect(test.manager.getState()).toMatchObject({ status: 'starting', recentSpeedMps: null, pace: 'checking' })
+    test.setNow(42_000)
+    test.position(createPosition(0, 0.00042, 42_000))
+    expect(test.manager.getState().recentSpeedMps).toBeNull()
+  })
+
+  it('최근 혼합속도 적용 뒤 정지하면 평소 속도로 복귀하고 느림으로 표시하지 않는다', () => {
+    const test = setup()
+    test.start()
+    for (let i = 0; i < 10; i += 1) {
+      test.setNow(i * 2_000)
+      test.position(createPosition(0, i * 0.00002, i * 2_000, 5, 1))
+    }
+    expect(test.manager.getState().speedSource).toBe('recent_blended')
+    for (let i = 10; i <= 17; i += 1) {
+      test.setNow(i * 2_000)
+      test.position(createPosition(0, 0.00018, i * 2_000, 5, 0))
+    }
+    expect(test.manager.getState()).toMatchObject({ status: 'stationary', pace: 'checking',
+      appliedSpeedMps: baselineSpeed.speedMps, speedSource: 'personalized' })
+  })
+
+  it('중단된 안내의 늦은 재탐색 응답은 새 안내 경로를 덮어쓰지 않는다', async () => {
+    let resolve!: (route: WalkingRoute) => void
+    const test = setup(vi.fn(() => new Promise<WalkingRoute>((done) => { resolve = done })))
+    test.start(true)
+    test.position(createPosition(0, 0, 0))
+    test.manager.stop()
+    const newRoute = { ...route, distanceM: 500 }
+    test.manager.start({ route: newRoute, destination: route.coordinates.at(-1)!, baselineSpeed, forceInitialReroute: false })
+    resolve(route)
+    await Promise.resolve()
+    expect(test.manager.getState().route?.distanceM).toBe(500)
+  })
   it('안내 시작과 종료 시 GPS 감시와 타이머를 정리한다', () => {
     const test = setup()
     test.start()

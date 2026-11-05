@@ -12,6 +12,7 @@ import { useAuth } from '../features/auth/authContext'
 import { WalkingRouteMap } from '../features/map/WalkingRouteMap'
 import { useMeasurement } from '../features/measurement/measurementContext'
 import { useLiveNavigation } from '../features/navigation/useLiveNavigation'
+import { WalkingPaceCard } from '../features/navigation/WalkingPaceCard'
 import { PlaceSearchPanel } from '../features/places/PlaceSearchPanel'
 import { TransitRoutePanel } from '../features/transit/TransitRoutePanel'
 import { useSync } from '../features/sync/syncContext'
@@ -45,29 +46,6 @@ const ROUTE_START_GAP_WARNING_M = 15
 interface GuidanceResult {
   durationSeconds: number | null
   distanceM: number | null
-}
-
-function getNavigationStatusLabel(status: string): string {
-  switch (status) {
-    case 'starting':
-      return 'GPS 위치 확인 중'
-    case 'moving':
-      return '이동 중'
-    case 'stationary':
-      return '정지'
-    case 'off_route':
-      return '경로 이탈'
-    case 'rerouting':
-      return '경로 재탐색 중'
-    case 'stale':
-      return 'GPS 위치 갱신 대기'
-    case 'gps_unstable':
-      return 'GPS 위치 확인 중'
-    case 'error':
-      return 'GPS 또는 안내 오류'
-    default:
-      return '안내 대기'
-  }
 }
 
 function getSyncStatusLabel(status: string): string {
@@ -932,53 +910,10 @@ export function WalkingRoutePage() {
       {navigation.isActive && (
         <section className="status-card live-navigation-card" aria-labelledby="live-navigation-title">
           <p className="eyebrow">{destination?.name ?? '목적지'}까지</p>
-          <p className="eta-label">남은 예상시간</p>
-          <h2 id="live-navigation-title" className="hero-metric">
-            {formatDuration(navigation.remainingDurationSeconds)}
-          </h2>
-          <p
-            className={`auth-message ${
-              navigation.status === 'moving'
-                ? 'success-message'
-                : 'warning-card'
-            }`}
-            role="status"
-          >
-            {getNavigationStatusLabel(navigation.status)}
-          </p>
-          <dl className="eta-key-facts navigation-key-metrics">
-            <div>
-              <dt>남은 경로 거리</dt>
-              <dd>
-                {navigation.remainingDistanceM === null
-                  ? '계산할 수 없음'
-                  : formatDistance(navigation.remainingDistanceM)}
-              </dd>
-            </div>
-            <div>
-              <dt>예상 도착시각</dt>
-              <dd>
-                {navigation.arrivalAt === null
-                  ? '계산할 수 없음'
-                  : formatKoreanArrivalTime(
-                      navigation.arrivalAt,
-                      navigation.lastPositionAt === null
-                        ? new Date()
-                        : new Date(navigation.lastPositionAt),
-                    )}
-              </dd>
-            </div>
-          </dl>
+          <h2 id="live-navigation-title">실시간 도보 안내</h2>
+          <WalkingPaceCard navigation={navigation} />
           {navigation.message !== null && (
-            <p
-              className={
-                navigation.status === 'error'
-                  ? 'auth-message error-message'
-                  : 'auth-message warning-card'
-              }
-            >
-              {navigation.message}
-            </p>
+            <p className="auth-message warning-card">{navigation.message}</p>
           )}
           <p
             className={`compact-save-status ${

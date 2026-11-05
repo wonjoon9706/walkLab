@@ -10,6 +10,8 @@ import {
   calculateRouteProgress,
   combineWalkingSpeed,
   estimateRecentWalkingSpeed,
+  calculateCoordinateDistanceM,
+  compareWalkingPace,
 } from './liveNavigationAnalysis'
 import {
   liveNavigationConfig,
@@ -25,6 +27,7 @@ export interface LiveNavigationManager {
   ) => boolean
   stop: () => void
   dispose: () => void
+  setVisible: (visible: boolean) => void
 }
 
 export interface LiveNavigationPositionSource {
@@ -50,12 +53,15 @@ const initialState: LiveNavigationState = {
   status: 'idle',
   isActive: false,
   route: null,
+  isReferenceRoute: false,
   currentPosition: null,
   currentAccuracyM: null,
   remainingCoordinates: [],
   remainingDistanceM: null,
   progressRatio: null,
   recentSpeedMps: null,
+  baselineSpeed: null,
+  pace: 'checking',
   appliedSpeedMps: null,
   speedSource: null,
   remainingDurationSeconds: null,
@@ -107,6 +113,10 @@ export function createLiveNavigationManager(
   let lastEtaObservationAtMs: number | null = null
   let lastDisplayUpdateAtMs = 0
   let movingSpeedCandidateStartedAtMs: number | null = null
+  let lastProcessedPositionAtMs: number | null = null
+  let visible = true
+  let freshAfterMs = 0
+  let generation = 0
   const listeners = new Set<(nextState: LiveNavigationState) => void>()
 
   function publish(partial: Partial<LiveNavigationState>) {
@@ -167,6 +177,13 @@ export function createLiveNavigationManager(
 
   async function rerouteFrom(position: GeoCoordinate) {
     if (input === null || rerouteInProgress) return
+    if (input.allowReroute === false) {
+      publish({ status: 'off_route', remainingDurationSeconds: null, arrivalAt: null,
+        recentSpeedMps: null, pace: 'checking',
+        message: '도보 경로와 현재 위치의 연결을 확인할 수 없어 남은 시간 안내를 보류합니다.' })
+      return
+    }
+    const currentGeneration = generation
 
     const nowMs = dependencies.now().getTime()
     const cooldownPassed =
@@ -200,7 +217,7 @@ export function createLiveNavigationManager(
         position,
         input.destination,
       )
-      if (!state.isActive || input === null) return
+      if (currentGeneration !== generation || !state.isActive || input === null) return
       input = { ...input, route: nextRoute, forceInitialReroute: false }
       progress = null
       offRouteObservationCount = 0
@@ -241,19 +258,19 @@ export function createLiveNavigationManager(
         message: '현재 위치 기준 새 경로를 적용했습니다. 속도를 확인하는 중입니다.',
       })
     } catch {
-      if (state.isActive) {
+      if (currentGeneration === generation && state.isActive) {
         publish({
           status: 'off_route',
           message: '경로 재탐색에 실패했습니다. 기존 경로를 유지합니다.',
         })
       }
     } finally {
-      rerouteInProgress = false
+      if (currentGeneration === generation) rerouteInProgress = false
     }
   }
 
   function handlePosition(position: GeolocationPosition) {
-    if (!state.isActive || input === null) return
+    if (!state.isActive || input === null || !visible) return
 
     const now = dependencies.now()
     const coordinate = {
@@ -262,10 +279,13 @@ export function createLiveNavigationManager(
     }
     const measuredAtMs = position.timestamp
     const accuracyM = position.coords.accuracy
+    const measuredDate = new Date(measuredAtMs)
+    if (!Number.isFinite(measuredDate.getTime()) || measuredAtMs < freshAfterMs ||
+      (lastProcessedPositionAtMs !== null && measuredAtMs <= lastProcessedPositionAtMs)) return
     publish({
       currentPosition: isValidCoordinate(coordinate) ? coordinate : null,
       currentAccuracyM: Number.isFinite(accuracyM) ? accuracyM : null,
-      lastPositionAt: now.toISOString(),
+      lastPositionAt: measuredDate.toISOString(),
     })
 
     const positionAgeSeconds = (now.getTime() - measuredAtMs) / 1000
@@ -278,14 +298,28 @@ export function createLiveNavigationManager(
       positionAgeSeconds >= -5 &&
       positionAgeSeconds <= config.maximumPositionAgeSeconds
     if (!qualityIsValid) {
+      movingSpeedCandidateStartedAtMs = null
       publish({
         status: 'gps_unstable',
+        recentSpeedMps: null, pace: 'checking',
         message: 'GPS 정확도가 낮아 이번 위치는 진행도와 속도 계산에서 제외했습니다.',
       })
       return
     }
+    lastProcessedPositionAtMs = measuredAtMs
 
-    lastValidPositionAtMs = now.getTime()
+    const previousObservation = observations.at(-1)
+    if (previousObservation !== undefined) {
+      const elapsed = (measuredAtMs - previousObservation.measuredAtMs) / 1000
+      if (elapsed <= config.maximumObservationGapSeconds &&
+        calculateCoordinateDistanceM(previousObservation.coordinate, coordinate) / elapsed > config.maximumWalkingSpeedMps) {
+        movingSpeedCandidateStartedAtMs = null
+        publish({ status: 'gps_unstable', recentSpeedMps: null, pace: 'checking',
+          message: 'GPS 위치가 갑자기 변해 이번 위치는 계산에서 제외했습니다.' })
+        return
+      }
+    }
+    lastValidPositionAtMs = measuredAtMs
     if (input.forceInitialReroute && !initialRerouteAttempted) {
       initialRerouteAttempted = true
       void rerouteFrom(coordinate)
@@ -321,6 +355,7 @@ export function createLiveNavigationManager(
       ) {
         publish({
           status: 'gps_unstable',
+          recentSpeedMps: null, pace: 'checking',
           message: '경로 진행도가 갑자기 변해 이번 위치는 계산에서 제외했습니다.',
         })
         return
@@ -374,11 +409,11 @@ export function createLiveNavigationManager(
     const etaSpeedMps =
       canUseRecentSpeed
         ? combinedSpeed.speedMps
-        : (state.appliedSpeedMps ?? input.baselineSpeed.speedMps)
+        : input.baselineSpeed.speedMps
     const etaSpeedSource =
       canUseRecentSpeed && combinedSpeed.usesRecentSpeed
         ? ('recent_blended' as const)
-        : (state.speedSource ?? input.baselineSpeed.source)
+        : input.baselineSpeed.source
     const recalculateEta = shouldRecalculateEta(
       now.getTime(),
       measuredAtMs,
@@ -424,7 +459,10 @@ export function createLiveNavigationManager(
       remainingCoordinates: nextProgress.remainingCoordinates,
       remainingDistanceM: nextProgress.remainingDistanceM,
       progressRatio,
-      recentSpeedMps: recentSpeed.speedMps,
+      recentSpeedMps: canUseRecentSpeed || recentSpeed.state === 'stationary' ? recentSpeed.speedMps : null,
+      pace: canUseRecentSpeed && recentSpeed.speedMps !== null
+        ? compareWalkingPace(recentSpeed.speedMps, input.baselineSpeed.speedMps, state.pace, config)
+        : 'checking',
       ...(recalculateEta && etaState !== null
         ? {
             appliedSpeedMps: etaSpeedMps,
@@ -434,6 +472,13 @@ export function createLiveNavigationManager(
         : {}),
       message,
     })
+
+    // 경로 밖 투영 거리는 실제 남은 보행거리로 확정하지 않는다.
+    if (nextProgress.distanceFromRouteM > config.offRouteDistanceM) {
+      publish({ status: 'off_route', remainingDistanceM: null,
+        remainingDurationSeconds: null, arrivalAt: null, pace: 'checking', recentSpeedMps: null,
+        message: '경로에서 벗어나 남은 도보시간을 확인할 수 없습니다.' })
+    }
 
     if (
       offRouteObservationCount >= config.offRouteObservationCount &&
@@ -455,19 +500,22 @@ export function createLiveNavigationManager(
     }
     publish({
       status: permissionDenied ? 'error' : 'gps_unstable',
+      recentSpeedMps: null, pace: 'checking',
       isActive: permissionDenied ? false : state.isActive,
       message: getGpsErrorMessage(error),
     })
   }
 
   function updateDisplayedEta() {
-    if (!state.isActive) return
+    if (!state.isActive || !visible) return
     const now = dependencies.now()
     const nowMs = now.getTime()
     const referenceTime = lastValidPositionAtMs ?? startedAtMs
     const elapsedSeconds =
       (nowMs - referenceTime) / 1000
     if (elapsedSeconds >= config.staleAfterSeconds) {
+      observations = []
+      movingSpeedCandidateStartedAtMs = null
       publish({
         arrivalAt:
           state.remainingDurationSeconds === null
@@ -476,6 +524,9 @@ export function createLiveNavigationManager(
                 nowMs + state.remainingDurationSeconds * 1000,
               ).toISOString(),
         status: 'stale',
+        recentSpeedMps: null, pace: 'checking',
+        appliedSpeedMps: input?.baselineSpeed.speedMps ?? null,
+        speedSource: input?.baselineSpeed.source ?? null,
         message: '최근 GPS 위치가 갱신되지 않았습니다. 화면을 켠 채 GPS 신호를 확인해 주세요.',
       })
       lastDisplayUpdateAtMs = nowMs
@@ -535,6 +586,7 @@ export function createLiveNavigationManager(
         }
       }
 
+      generation += 1
       input = nextInput
       progress = null
       observations = []
@@ -548,6 +600,8 @@ export function createLiveNavigationManager(
       lastEtaObservationAtMs = null
       lastDisplayUpdateAtMs = startedAtMs
       movingSpeedCandidateStartedAtMs = null
+      lastProcessedPositionAtMs = null
+      freshAfterMs = startedAtMs
       const initialDurationSeconds =
         nextInput.route.distanceM / nextInput.baselineSpeed.speedMps
       state = {
@@ -555,6 +609,8 @@ export function createLiveNavigationManager(
         status: 'starting',
         isActive: true,
         route: nextInput.route,
+        isReferenceRoute: nextInput.isReferenceRoute ?? false,
+        baselineSpeed: nextInput.baselineSpeed,
         remainingCoordinates: nextInput.route.coordinates,
         remainingDistanceM: nextInput.route.distanceM,
         appliedSpeedMps: nextInput.baselineSpeed.speedMps,
@@ -592,6 +648,7 @@ export function createLiveNavigationManager(
       }
     },
     stop() {
+      generation += 1
       stopResources()
       publish({
         status: 'idle',
@@ -608,6 +665,7 @@ export function createLiveNavigationManager(
       movingSpeedCandidateStartedAtMs = null
     },
     dispose() {
+      generation += 1
       stopResources()
       input = null
       progress = null
@@ -617,6 +675,19 @@ export function createLiveNavigationManager(
       lastDisplayUpdateAtMs = 0
       movingSpeedCandidateStartedAtMs = null
       listeners.clear()
+    },
+    setVisible(next) {
+      if (visible === next) return
+      visible = next
+      freshAfterMs = dependencies.now().getTime()
+      observations = []
+      movingSpeedCandidateStartedAtMs = null
+      lastValidPositionAtMs = null
+      startedAtMs = freshAfterMs
+      lastDisplayUpdateAtMs = freshAfterMs
+      if (state.isActive) publish({ status: next ? 'starting' : 'stale',
+        recentSpeedMps: null, pace: 'checking',
+        message: next ? '화면 복귀 후 새 GPS 위치를 기다리고 있습니다.' : '화면이 숨겨져 실시간 측정을 보류합니다.' })
     },
   }
 }

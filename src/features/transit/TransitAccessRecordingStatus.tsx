@@ -1,12 +1,15 @@
 import type { TransitBoardingTarget } from '../../services/navigation/transitAccessArrival'
 import type { TransitAccessRecordingState } from '../../services/navigation/transitAccessRecording'
 import { formatDistance } from '../../utils/format'
+import type { LiveNavigationState } from '../../domain/liveNavigation'
+import { WalkingPaceCard } from '../navigation/WalkingPaceCard'
 
-export function TransitAccessRecordingStatus({ state, target, active, onStart, onStop, canStart }: {
+export function TransitAccessRecordingStatus({ state, target, active, onStart, onStop, canStart, navigation }: {
   state: TransitAccessRecordingState
   target: TransitBoardingTarget | null
   active: boolean
   canStart: boolean
+  navigation?: LiveNavigationState
   onStart(): void
   onStop(): void
 }) {
@@ -30,6 +33,8 @@ export function TransitAccessRecordingStatus({ state, target, active, onStart, o
                 : state.phase === 'error' ? '기록 상태 확인 필요' : '안내 시작 전에는 GPS 기록을 수집하지 않습니다.'}
       </p>
       {active && <p>탑승 지점까지 {state.distanceM === null ? '거리 확인 중' : `직선거리 약 ${formatDistance(state.distanceM)}`}</p>}
+      {active && navigation?.isActive && <WalkingPaceCard navigation={navigation} reference={displayedTarget === null || navigation.isReferenceRoute} />}
+      {active && !navigation?.isActive && <small>남은 도보 경로를 확인하지 못해 실시간 보행 ETA는 안내하지 않습니다. GPS 기록은 계속 저장합니다.</small>}
       {active && state.gps !== 'receiving' && <p className="warning-card">
         {state.gps === 'inaccurate' ? 'GPS 정확도가 부족하거나 위치가 불안정해 도착 판정을 보류합니다.'
           : state.gps === 'stale' || state.gps === 'waiting' ? '새 GPS 위치를 기다리고 있습니다. 도착 판정은 보류됩니다.'

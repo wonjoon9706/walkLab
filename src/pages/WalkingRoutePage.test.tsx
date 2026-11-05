@@ -727,11 +727,9 @@ describe('WalkingRoutePage 출발지 선택', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('GPS 위치 확인 중')).toBeInTheDocument()
-    expect(
-      screen.getByRole('heading', { name: '계산할 수 없음' }),
-    ).toBeInTheDocument()
-    expect(screen.getAllByText('계산할 수 없음')).toHaveLength(3)
+    expect(screen.getByRole('region', { name: '실시간 도보 페이스' })).toBeInTheDocument()
+    expect(screen.getByText('현재 위치와 속도를 확인하고 있어요.')).toBeInTheDocument()
+    expect(screen.getByText('남은 도보 예상시간').nextElementSibling).toHaveTextContent('확인 중')
   })
 
   it('안내 중 남은 시간·거리·도착시각을 큰 핵심 영역에 표시한다', () => {
@@ -748,12 +746,10 @@ describe('WalkingRoutePage 출발지 선택', () => {
       </MemoryRouter>,
     )
 
-    expect(screen.getByText('남은 예상시간')).toBeInTheDocument()
-    expect(
-      screen.getByRole('heading', { name: '10분 20초' }),
-    ).toBeInTheDocument()
+    expect(screen.getByText('남은 도보 예상시간')).toBeInTheDocument()
+    expect(screen.getByText('10분 20초')).toBeInTheDocument()
     expect(screen.getByText('840 m')).toBeInTheDocument()
-    expect(screen.getByText('오전 9:10')).toBeInTheDocument()
+    expect(screen.getByText(/도보 도착 예상 오전 9:10/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '안내 종료' })).toBeInTheDocument()
   })
 

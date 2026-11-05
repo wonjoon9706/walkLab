@@ -2,6 +2,7 @@ import type {
   LiveNavigationObservation,
   RecentWalkingSpeed,
   RouteProgress,
+  LiveNavigationState,
 } from '../../domain/liveNavigation'
 import type { GeoCoordinate } from '../../domain/walkingRoute'
 import type { LiveNavigationConfig } from './liveNavigationConfig'
@@ -199,14 +200,23 @@ export function estimateRecentWalkingSpeed(
       (second.measuredAtMs - first.measuredAtMs) / 1000
     if (
       elapsedSeconds <= 0 ||
-      elapsedSeconds > config.maximumObservationGapSeconds
+      elapsedSeconds > config.maximumObservationGapSeconds ||
+      !Number.isFinite(first.accuracyM) || !Number.isFinite(second.accuracyM) ||
+      first.accuracyM < 0 || second.accuracyM < 0 ||
+      first.accuracyM > config.maximumAccuracyM || second.accuracyM > config.maximumAccuracyM
     ) {
+      speeds.length = 0
       continue
     }
     const coordinateSpeed =
       calculateCoordinateDistanceM(first.coordinate, second.coordinate) /
       elapsedSeconds
     const deviceSpeed = second.deviceSpeedMps
+    // G6와 같이 좌표 도약을 먼저 제외한다. 장치 속도가 정상이어도 도약을 숨기지 않는다.
+    if (!Number.isFinite(coordinateSpeed) || coordinateSpeed > config.maximumWalkingSpeedMps) {
+      speeds.length = 0
+      continue
+    }
     const selectedSpeed =
       deviceSpeed !== null &&
       Number.isFinite(deviceSpeed) &&
@@ -270,6 +280,18 @@ export function estimateRecentWalkingSpeed(
       trailingStationarySpeeds.length,
     ),
   }
+}
+
+export function compareWalkingPace(
+  speedMps: number, baselineSpeedMps: number,
+  previous: LiveNavigationState['pace'], config: LiveNavigationConfig,
+): LiveNavigationState['pace'] {
+  const ratio = speedMps / baselineSpeedMps - 1
+  const boundary = config.paceDifferenceRatio
+  const release = boundary - config.paceHysteresisRatio
+  if (ratio <= -boundary || (previous === 'slower' && ratio < -release)) return 'slower'
+  if (ratio >= boundary || (previous === 'faster' && ratio > release)) return 'faster'
+  return 'similar'
 }
 
 export function combineWalkingSpeed(

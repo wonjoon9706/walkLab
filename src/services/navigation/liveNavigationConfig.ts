@@ -22,6 +22,8 @@ export interface LiveNavigationConfig {
   segmentSearchForward: number
   initialSegmentSearchForward: number
   maximumProgressBacktrackM: number
+  paceDifferenceRatio: number
+  paceHysteresisRatio: number
 }
 
 export const liveNavigationConfig: LiveNavigationConfig = {
@@ -49,4 +51,6 @@ export const liveNavigationConfig: LiveNavigationConfig = {
   segmentSearchForward: 25,
   initialSegmentSearchForward: 25,
   maximumProgressBacktrackM: 10,
+  paceDifferenceRatio: 0.15,
+  paceHysteresisRatio: 0.05,
 }

@@ -27,7 +27,11 @@ export function useLiveNavigation() {
 
   useEffect(() => {
     const unsubscribe = manager.subscribe(setState)
+    const updateVisibility = () => manager.setVisible(document.visibilityState === 'visible')
+    updateVisibility()
+    document.addEventListener('visibilitychange', updateVisibility)
     return () => {
+      document.removeEventListener('visibilitychange', updateVisibility)
       unsubscribe()
       manager.dispose()
     }

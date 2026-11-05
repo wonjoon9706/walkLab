@@ -43,6 +43,7 @@ import { KakaoFirstBoardingSummary } from './KakaoFirstBoardingSummary'
 import { useTransitAccessRecording } from './useTransitAccessRecording'
 import { TransitAccessRecordingStatus } from './TransitAccessRecordingStatus'
 import { resolveTransitRecordingTarget } from '../../services/navigation/transitAccessArrival'
+import { selectWalkingSpeedProfile } from '../../services/routing/walkingEta'
 
 interface Props {
   active: boolean
@@ -973,6 +974,7 @@ export function KakaoTransitRoutePanel({
     <>
       {view === 'list' && accessRecording.state.routeId !== null && (
         <TransitAccessRecordingStatus state={accessRecording.state} target={recordingTarget}
+          navigation={accessRecording.navigation}
           active={accessRecording.isActive} canStart={false} onStart={() => undefined} onStop={() => { void accessRecording.finish() }} />
       )}
       {view === 'list' && (
@@ -1138,8 +1140,24 @@ export function KakaoTransitRoutePanel({
             state={!accessRecording.isActive && accessRecording.state.routeId !== selected.id
               ? { ...accessRecording.state, phase: 'idle', message: null } : accessRecording.state}
             target={recordingTarget} active={accessRecording.isActive}
+            navigation={accessRecording.navigation}
             canStart={detailStatus === 'ready' && firstTransitStepIndex !== undefined}
-            onStart={() => { setMap(true); void accessRecording.start(selected.id, recordingTarget) }}
+            onStart={() => {
+              setMap(true)
+              if (selectedAccessEvidence === null) {
+                void accessRecording.start(selected.id, recordingTarget)
+                return
+              }
+              const walkingRoute = selectedAccessEvidence.walkingRoute
+              void accessRecording.start(selected.id, recordingTarget, {
+                route: walkingRoute,
+                destination: walkingRoute.coordinates.at(-1)!,
+                baselineSpeed: selectWalkingSpeedProfile(speedModel),
+                forceInitialReroute: false,
+                allowReroute: false,
+                isReferenceRoute: selectedAccessEvidence.endpointVerification !== 'verified',
+              })
+            }}
             onStop={() => { void accessRecording.finish() }}
           />
           <section className="status-card transit-eta-card">

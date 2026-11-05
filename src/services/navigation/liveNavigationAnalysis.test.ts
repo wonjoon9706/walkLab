@@ -4,6 +4,7 @@ import {
   calculateRouteProgress,
   combineWalkingSpeed,
   estimateRecentWalkingSpeed,
+  compareWalkingPace,
 } from './liveNavigationAnalysis'
 import { liveNavigationConfig } from './liveNavigationConfig'
 
@@ -89,6 +90,26 @@ describe('실시간 경로 진행도', () => {
 })
 
 describe('최근 보행속도', () => {
+  it('장치가 정상 속도를 보고해도 좌표 도약 구간은 제외한다', () => {
+    const observations = Array.from({ length: 6 }, (_, i) => observation(i * 0.01, i * 2_000, 1.4))
+    expect(estimateRecentWalkingSpeed(observations, liveNavigationConfig).state).toBe('uncertain')
+  })
+
+  it('정확도 부족 관측 뒤 과거 구간으로 현재 속도를 확정하지 않는다', () => {
+    const observations = Array.from({ length: 5 }, (_, i) => observation(i * 0.00001, i * 2_000, 1.4))
+    observations[4].accuracyM = 80
+    expect(estimateRecentWalkingSpeed(observations, liveNavigationConfig).speedMps).toBeNull()
+  })
+
+  it('평소 대비 15% 차이와 5% 완충 범위로 페이스 진동을 줄인다', () => {
+    expect(compareWalkingPace(1.5, 1.5, 'checking', liveNavigationConfig)).toBe('similar')
+    expect(compareWalkingPace(1.2, 1.5, 'similar', liveNavigationConfig)).toBe('slower')
+    expect(compareWalkingPace(1.3, 1.5, 'slower', liveNavigationConfig)).toBe('slower')
+    expect(compareWalkingPace(1.4, 1.5, 'slower', liveNavigationConfig)).toBe('similar')
+    expect(compareWalkingPace(1.8, 1.5, 'similar', liveNavigationConfig)).toBe('faster')
+    expect(compareWalkingPace(1.7, 1.5, 'faster', liveNavigationConfig)).toBe('faster')
+    expect(compareWalkingPace(1.6, 1.5, 'faster', liveNavigationConfig)).toBe('similar')
+  })
   it('여러 구간의 순간값 대신 중앙값과 학습속도를 결합한다', () => {
     const observations = [
       observation(0, 0, null),
