@@ -4,16 +4,27 @@ import type { GeoCoordinate, WalkingRoute } from '../../domain/walkingRoute'
 import { calculateWalkingRouteEndpointGaps } from './walkingRouteDiagnostics'
 import { MAX_TRANSIT_WALK_ENDPOINT_GAP_M } from './transitAccessWalk'
 
-export function getTransitStopFailureDiagnostic(error: unknown): TransitWalkDiagnostic {
+export function getTransitStopFailureCode(error: unknown): string {
   const code = error instanceof Error ? error.message : ''
+  const allowed = ['PRODUCTION_DISABLED', 'SERVER_NOT_CONFIGURED', 'SERVER_AUTH_NOT_CONFIGURED',
+    'AUTH_SESSION_MISSING', 'AUTH_HEADER_MISSING', 'AUTH_TOKEN_INVALID', 'USER_NOT_ALLOWED',
+    'SEOUL_BUS_AUTH_ERROR', 'REQUEST_TIMEOUT', 'AUTH_REQUEST_TIMEOUT', 'GATEWAY_TIMEOUT',
+    'FUNCTION_INVOCATION_TIMEOUT', 'TRANSIT_DETAIL_REQUEST_TIMEOUT', 'QUOTA_EXCEEDED',
+    'INVALID_RESPONSE', 'NETWORK_ERROR', 'AUTH_SERVICE_UNAVAILABLE', 'SEOUL_BUS_API_ERROR']
+  return allowed.includes(code) ? code : 'STOP_API_FAILED'
+}
+
+export function getTransitStopFailureDiagnostic(error: unknown): TransitWalkDiagnostic {
+  const code = getTransitStopFailureCode(error)
   if (code === 'PRODUCTION_DISABLED') return 'PRODUCTION_DISABLED'
   if (code === 'SERVER_NOT_CONFIGURED' || code === 'SERVER_AUTH_NOT_CONFIGURED') return 'API_NOT_CONFIGURED'
   if (['AUTH_SESSION_MISSING', 'AUTH_HEADER_MISSING', 'AUTH_TOKEN_INVALID', 'USER_NOT_ALLOWED',
     'SEOUL_BUS_AUTH_ERROR'].includes(code)) return 'API_AUTH_ERROR'
-  if (code === 'REQUEST_TIMEOUT') return 'API_TIMEOUT'
+  if (['REQUEST_TIMEOUT', 'AUTH_REQUEST_TIMEOUT', 'GATEWAY_TIMEOUT', 'FUNCTION_INVOCATION_TIMEOUT',
+    'TRANSIT_DETAIL_REQUEST_TIMEOUT'].includes(code)) return 'API_TIMEOUT'
   if (code === 'QUOTA_EXCEEDED') return 'API_QUOTA_EXCEEDED'
   if (code === 'INVALID_RESPONSE') return 'API_INVALID_RESPONSE'
-  if (code === 'NETWORK_ERROR') return 'API_CONNECTION_FAILED'
+  if (code === 'NETWORK_ERROR' || code === 'AUTH_SERVICE_UNAVAILABLE') return 'API_CONNECTION_FAILED'
   if (code === 'SEOUL_BUS_API_ERROR') return 'API_PROVIDER_ERROR'
   return 'STOP_API_FAILED'
 }

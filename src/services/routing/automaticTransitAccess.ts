@@ -32,7 +32,7 @@ import { resolveSubwayEntranceCandidates } from './subwayEntranceResolution'
 import type { SubwayEntranceWalkingRouteCache } from './subwayEntranceResolution'
 import { recommendSubwayEntrance } from './subwayEntranceSelection'
 import { calculateWalkingRouteEndpointGaps } from './walkingRouteDiagnostics'
-import { getTransitStopFailureDiagnostic, resolveTransitPathReferenceWalk } from './transitPathReferenceWalk'
+import { getTransitStopFailureCode, getTransitStopFailureDiagnostic, resolveTransitPathReferenceWalk } from './transitPathReferenceWalk'
 
 const MAX_BUS_SEARCH_ANCHOR_DISTANCE_M = 120
 
@@ -217,7 +217,7 @@ async function findVerifiedBusCandidates(
           destinationGapM: null,
           walkingErrorCode: null,
           arrivalEstimates: boardingArrival?.estimates ?? [],
-          arrivalFetchedAt: new Date().toISOString(),
+          arrivalFetchedAt: boardingArrival?.fetchedAt ?? new Date().toISOString(),
         })
       }
     }
@@ -271,6 +271,7 @@ export async function resolveAutomaticTransitAccess(
     } catch (error) {
       return { ...review('NO_VERIFIED_BUS_STOP'),
         diagnosticCode: getTransitStopFailureDiagnostic(error),
+        busLookupErrorCode: getTransitStopFailureCode(error),
         ...await resolveTransitPathReferenceWalk(input.route, 'access', input.origin.coordinate,
           dependencies.getWalkingRoute, input.signal) }
     }

@@ -10,6 +10,14 @@ interface Dependencies {
 
 const ROUTE_ARRIVAL_CACHE_TTL_MS = 30_000
 
+export class SeoulBusEvidenceError extends Error {
+  constructor(public readonly code: string, public readonly status: number | null,
+    public readonly requestId: string | null = null) {
+    super(code)
+    this.name = 'SeoulBusEvidenceError'
+  }
+}
+
 export function createSeoulBusEvidenceClient(
   dependencies: Dependencies,
 ): SeoulBusProvider {
@@ -18,6 +26,7 @@ export function createSeoulBusEvidenceClient(
     expiresAt: number
     value: Awaited<ReturnType<SeoulBusProvider['getRouteArrivals']>>
   }>()
+  const routeArrivalInFlight = new Map<string, Promise<Awaited<ReturnType<SeoulBusProvider['getRouteArrivals']>>>>()
   async function request(body: Record<string, unknown>, signal: AbortSignal) {
     const token = await dependencies.getAccessToken()
     if (token === null) throw new Error('AUTH_SESSION_MISSING')
@@ -41,8 +50,15 @@ export function createSeoulBusEvidenceClient(
       const code = typeof value === 'object' && value !== null && 'code' in value ? value.code : null
       const allowed = ['PRODUCTION_DISABLED', 'SERVER_NOT_CONFIGURED', 'SERVER_AUTH_NOT_CONFIGURED',
         'AUTH_HEADER_MISSING', 'AUTH_TOKEN_INVALID', 'USER_NOT_ALLOWED', 'REQUEST_TIMEOUT',
-        'QUOTA_EXCEEDED', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SEOUL_BUS_API_ERROR', 'SEOUL_BUS_AUTH_ERROR']
-      throw new Error(typeof code === 'string' && allowed.includes(code) ? code : 'INVALID_RESPONSE')
+        'QUOTA_EXCEEDED', 'INVALID_REQUEST', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SEOUL_BUS_API_ERROR', 'SEOUL_BUS_AUTH_ERROR',
+        'AUTH_REQUEST_TIMEOUT', 'AUTH_SERVICE_UNAVAILABLE']
+      const gatewayTimeout = response.headers.get('x-vercel-error') === 'FUNCTION_INVOCATION_TIMEOUT'
+        ? 'FUNCTION_INVOCATION_TIMEOUT' : 'GATEWAY_TIMEOUT'
+      const errorCode = typeof code === 'string' && allowed.includes(code) ? code
+        : response.status === 504 ? gatewayTimeout : 'INVALID_RESPONSE'
+      const id = response.headers.get('X-Smart-Arrival-Request-Id')
+      throw new SeoulBusEvidenceError(errorCode, response.status,
+        id !== null && /^[a-f0-9-]{36}$/i.test(id) ? id : null)
     }
     return value
   }
@@ -54,20 +70,24 @@ export function createSeoulBusEvidenceClient(
       return await request({ operation: 'routes_at_stop', arsId }, signal) as Awaited<ReturnType<SeoulBusProvider['getRoutesAtStop']>>
     },
     async getRouteArrivals(routeId: string, signal: AbortSignal) {
+      if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
       const currentTime = now()
       const cached = routeArrivalCache.get(routeId)
       if (cached !== undefined && cached.expiresAt > currentTime) {
         return cached.value
       }
-      const value = await request(
-        { operation: 'route_arrivals', routeId },
-        signal,
-      ) as Awaited<ReturnType<SeoulBusProvider['getRouteArrivals']>>
-      routeArrivalCache.set(routeId, {
-        expiresAt: currentTime + ROUTE_ARRIVAL_CACHE_TTL_MS,
-        value,
-      })
-      return value
+      const pending = routeArrivalInFlight.get(routeId)
+      if (pending !== undefined) return pending
+      const load = (async () => {
+        const stops = await request({ operation: 'route_arrivals', routeId }, signal) as Awaited<ReturnType<SeoulBusProvider['getRouteArrivals']>>
+        const fetchedAt = new Date(now()).toISOString()
+        const value = stops.map((stop) => ({ ...stop, fetchedAt }))
+        routeArrivalCache.set(routeId, { expiresAt: now() + ROUTE_ARRIVAL_CACHE_TTL_MS, value })
+        return value
+      })()
+      routeArrivalInFlight.set(routeId, load)
+      try { return await load }
+      finally { if (routeArrivalInFlight.get(routeId) === load) routeArrivalInFlight.delete(routeId) }
     },
   }
 }

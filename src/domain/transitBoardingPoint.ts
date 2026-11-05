@@ -119,6 +119,7 @@ export type AutomaticTransitAccessResult =
       referenceWalk?: TransitPathReferenceWalk
       referenceWalkIssue?: TransitWalkDiagnostic
       diagnosticCode?: TransitWalkDiagnostic
+      busLookupErrorCode?: string
       busCandidates: BusBoardingPointCandidateEvidence[]
       busDiagnostics: BusBoardingResolutionDiagnostics | null
       subwayCandidates: SubwayEntranceCandidateEvidence[]

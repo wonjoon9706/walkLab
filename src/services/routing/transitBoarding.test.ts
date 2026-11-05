@@ -75,6 +75,24 @@ function arrivals(bus?: BusArrivalInfo, subway?: SubwayArrivalInfo) {
 }
 
 describe('T2-3 순차 탑승 가능성 계산', () => {
+  it('현재 남은 도보 4분30초와 버스 절대 도착 6분을 비교하고 초기 도보를 중복 가산하지 않는다', () => {
+    const plan = composeTransitBoardingPlan(itinerary([leg('WALK', { distanceM: 2000 }), leg('BUS')]),
+      readyModel(2), arrivals(busArrival(360)), now, { source: 'live_pace', durationSeconds: 270 })
+    expect(plan.boardings[0].accessDurationSeconds).toBe(270)
+    expect(plan.boardings[0].candidates[0]).toMatchObject({ marginSeconds: 90, likelihood: 'tight' })
+    expect(plan.boardings[0].accessArrivalAt).toBe(new Date(now.getTime() + 270_000).toISOString())
+  })
+  it('현재 접근 위치가 불명확하면 유효한 버스 데이터가 있어도 판단을 보류한다', () => {
+    const plan = composeTransitBoardingPlan(itinerary([leg('WALK'), leg('BUS')]),
+      readyModel(2), arrivals(busArrival(360)), now, { source: 'unavailable', durationSeconds: null })
+    expect(plan.boardings[0]).toMatchObject({ status: 'unavailable', candidates: [], accessArrivalAt: null })
+  })
+  it('진행 중 남은 시간도 버스 데이터 만료와 미래 환승 제한을 우회하지 않는다', () => {
+    const plan = composeTransitBoardingPlan(itinerary([leg('WALK'), leg('BUS'), leg('WALK'), leg('BUS')]),
+      readyModel(2), arrivals(busArrival(360)), new Date(now.getTime() + 121_000), { source: 'live_pace', durationSeconds: 30 })
+    expect(plan.boardings[0]).toMatchObject({ status: 'unavailable', dataFreshness: 'stale' })
+    expect(plan.boardings[1].status).toBe('requery_required')
+  })
   it('G7 준비 완료 사용자는 거리와 개인속도로 순수 보행시간을 계산한다', () => {
     const estimate = calculateTransitWalkingLeg(leg('WALK'), 0, readyModel(2))
     expect(estimate.pureWalkingDurationSeconds).toBe(160)

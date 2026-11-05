@@ -466,6 +466,17 @@ export function KakaoTransitRoutePanel({
   const [mapVisible, setMapVisible] = useState(false)
   const routeArrivals = useKakaoRouteArrivals()
   const accessRecording = useTransitAccessRecording()
+  const navigation = accessRecording.navigation
+  // G9가 1초마다 갱신하는 절대 도착시각과 남은 시간으로 같은 평가시각을 재사용한다.
+  const navigationClock = navigation?.arrivalAt != null && navigation.remainingDurationSeconds != null
+    ? Date.parse(navigation.arrivalAt) - navigation.remainingDurationSeconds * 1_000 : null
+  const firstBoardingNow = accessRecording.isActive && navigationClock !== null && Number.isFinite(navigationClock)
+    ? Math.max(navigationClock, routeArrivals.displayedAt) : routeArrivals.displayedAt
+  const walkingContext = { routeId: accessRecording.state.routeId, isRecording: accessRecording.isActive,
+    guidanceEnded: !accessRecording.isActive && accessRecording.state.routeId !== null && accessRecording.state.phase !== 'idle',
+    navigation: accessRecording.navigation }
+  const [arrivalRefreshPending, setArrivalRefreshPending] = useState(false)
+  const arrivalRefreshInFlight = useRef(false)
   const [showOtherRoutes, setShowOtherRoutes] = useState(false)
   const [directWalkStatus, setDirectWalkStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [directWalkResult, setDirectWalkResult] = useState<DirectWalkResult | null>(null)
@@ -637,18 +648,8 @@ export function KakaoTransitRoutePanel({
     }
   }
 
-  async function resolveRoutePersonalization(
-    route: KakaoTransitRoute,
-    controller: AbortController,
-    requests: TransitDetailRequestCache,
-  ): Promise<DetailResult> {
-    const commonDependencies = {
-      seoulBusProvider: requests.seoulBusProvider,
-      searchPlaces: requests.searchPlaces,
-      getWalkingRoute: requests.getWalkingRoute,
-      subwayEntranceWalkingRouteCache: walkingCache.current,
-    }
-    const accessPromise = resolveAutomaticTransitAccess({
+  function resolveRouteAccess(route: KakaoTransitRoute, controller: AbortController, requests: TransitDetailRequestCache) {
+    return resolveAutomaticTransitAccess({
       route,
       origin: {
         coordinate: origin,
@@ -665,7 +666,24 @@ export function KakaoTransitRoutePanel({
       },
       speed: { kind: 'g7_model', model: speedModel },
       signal: controller.signal,
-    }, commonDependencies)
+    }, {
+      seoulBusProvider: requests.seoulBusProvider, searchPlaces: requests.searchPlaces,
+      getWalkingRoute: requests.getWalkingRoute, subwayEntranceWalkingRouteCache: walkingCache.current,
+    })
+  }
+
+  async function resolveRoutePersonalization(
+    route: KakaoTransitRoute,
+    controller: AbortController,
+    requests: TransitDetailRequestCache,
+  ): Promise<DetailResult> {
+    const commonDependencies = {
+      seoulBusProvider: requests.seoulBusProvider,
+      searchPlaces: requests.searchPlaces,
+      getWalkingRoute: requests.getWalkingRoute,
+      subwayEntranceWalkingRouteCache: walkingCache.current,
+    }
+    const accessPromise = resolveRouteAccess(route, controller, requests)
     const egressPromise = resolveAutomaticTransitEgress({
       route,
       destination: {
@@ -882,8 +900,35 @@ export function KakaoTransitRoutePanel({
   }
 
   async function lookupRealtimeArrival() {
-    if (selected === null || detail?.routeId !== selected.id || detailAbort.current === null) return
-    await routeArrivals.ensure(selected, detail.access, detailAbort.current.signal, true)
+    if (selected === null || detail?.routeId !== selected.id || detailStatus !== 'ready' || detailAbort.current === null || arrivalRefreshInFlight.current) return
+    const route = selected
+    const controller = detailAbort.current
+    const requestId = searchRequestId.current
+    arrivalRefreshInFlight.current = true
+    setArrivalRefreshPending(true)
+    try {
+      let access = detail.access
+      const first = route.steps.find((step) => step.mode === 'BUS' || step.mode === 'SUBWAY')
+      // 선행 API가 실패하면 후보 자체가 없다. 도착 API만 재시도하지 않고 같은 검증기를 재사용한다.
+      if (first?.mode === 'BUS' && (access === null || access.busCandidates.length !== 1) && detailRequestCache.current !== null) {
+        access = await resolveRouteAccess(route, controller, detailRequestCache.current)
+        if (controller.signal.aborted || requestId !== searchRequestId.current) return
+        const current = personalizationRef.current.get(route.id)
+        const nextDetail = { ...(current?.detail ?? detail), access }
+        const evidence = collectKakaoEtaG8WalkEvidence(access, nextDetail.egress)
+        const eta = calculateKakaoTransitEta(route, speedModel, evidence)
+        const complete = evidence.some((item) => item.scope === 'access') && evidence.some((item) => item.scope === 'egress') &&
+          !evidence.some((item) => item.source === 'kakao_bus_path_endpoint')
+        updatePersonalization(route.id, { detail: nextDetail,
+          status: eta.status !== 'available' ? 'unavailable' : complete ? 'complete' : 'partial' })
+      }
+      if (!controller.signal.aborted && requestId === searchRequestId.current) {
+        await routeArrivals.ensure(route, access, controller.signal, true)
+      }
+    } finally {
+      arrivalRefreshInFlight.current = false
+      setArrivalRefreshPending(false)
+    }
   }
 
   async function loadDirectWalkComparison() {
@@ -1102,7 +1147,7 @@ export function KakaoTransitRoutePanel({
                 </small>
                 <KakaoFirstBoardingSummary route={route} access={routeDetail?.access ?? null}
                   arrival={routeArrivals.entries.get(route.id)} speedModel={speedModel}
-                  now={routeArrivals.displayedAt}
+                  now={firstBoardingNow} walkingContext={walkingContext}
                   lookupPlanned={initialIdSet.has(route.id) || routePersonalization?.status !== 'not_started'} />
                 </button>
               )
@@ -1258,11 +1303,11 @@ export function KakaoTransitRoutePanel({
                   {step.index === firstTransitStepIndex && (
                     <div className="kakao-leg-arrival">
                       <KakaoFirstBoardingSummary route={selected} access={detail?.access ?? null}
-                        arrival={selectedArrival} speedModel={speedModel} now={routeArrivals.displayedAt} />
+                        arrival={selectedArrival} speedModel={speedModel} now={firstBoardingNow} walkingContext={walkingContext} />
                       <button type="button" className="secondary-button"
-                        disabled={detail === null || arrivalStatus === 'loading'}
+                        disabled={detailStatus !== 'ready' || detail === null || arrivalStatus === 'loading' || arrivalRefreshPending}
                         onClick={() => void lookupRealtimeArrival()}>
-                        {arrivalStatus === 'loading' ? '도착정보 확인 중' : '도착정보 새로고침'}
+                        {arrivalStatus === 'loading' || arrivalRefreshPending ? '도착정보 확인 중' : '도착정보 새로고침'}
                       </button>
                     </div>
                   )}
@@ -1422,6 +1467,7 @@ export function KakaoTransitRoutePanel({
                 {' '}ETA 계산 {performanceTiming.etaCalculationMs.toFixed(2)}ms
               </p>
               <KakaoDetailDiagnostics detail={detail} originSource={originSource} />
+              {selectedArrival?.errorCode !== undefined && <p>첫 승차 조회 오류: {selectedArrival.errorCode}</p>}
             </details>
           )}
         </>

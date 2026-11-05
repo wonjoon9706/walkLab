@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "api/kakao/seoul-bus-evidence.ts": { "maxDuration": 20 }
+  },
   "rewrites": [
     {
       "source": "/login",

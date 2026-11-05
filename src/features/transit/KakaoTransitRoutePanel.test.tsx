@@ -209,6 +209,44 @@ describe('카카오 개인화 ETA 화면 연결', () => {
   })
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
+  it('선행 버스 API 504 후 수동 새로고침은 정류장 검증부터 다시 수행한다', async () => {
+    let finishEgress: (value: typeof egressResult) => void = () => undefined
+    resolveEgressMock.mockReturnValueOnce(new Promise<typeof egressResult>((resolve) => { finishEgress = resolve }))
+    resolveAccessMock.mockResolvedValueOnce({ status: 'review_required', reason: 'NO_VERIFIED_BUS_STOP',
+      diagnosticCode: 'API_TIMEOUT', busLookupErrorCode: 'REQUEST_TIMEOUT', busCandidates: [], subwayCandidates: [], busDiagnostics: null })
+    vi.spyOn(kakaoTransitRouteClient, 'getTransitRoutes').mockResolvedValue(result)
+    renderPanel()
+    await screen.findByText(/도착정보 응답 지연/)
+    expect(getRouteArrivalsMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('경로 1').closest('button')!)
+    const refresh = await screen.findByRole('button', { name: '도착정보 새로고침' })
+    expect(refresh).toBeDisabled()
+    await act(async () => { finishEgress(egressResult) })
+    await waitFor(() => expect(refresh).toBeEnabled())
+    fireEvent.click(refresh)
+    await waitFor(() => expect(getRouteArrivalsMock).toHaveBeenCalledOnce())
+    expect(resolveAccessMock).toHaveBeenCalledTimes(2)
+    expect(screen.getByText(/1번째 정보 · 6분 후/)).toBeInTheDocument()
+    expect(kakaoTransitRouteClient.getTransitRoutes).toHaveBeenCalledOnce()
+  })
+
+  it('목록 수신·상세 전환·active 변경 뒤에도 Hook 순서와 검색 횟수를 유지한다', async () => {
+    vi.spyOn(kakaoTransitRouteClient, 'getTransitRoutes').mockResolvedValue(result)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const props = { origin, destination: { id: 'destination', name: '목적지', address: '주소', roadAddress: null,
+      coordinate: destinationCoordinate }, speedModel: speedModel(2) }
+    const view = render(<KakaoTransitRoutePanel {...props} active={false} />)
+    view.rerender(<KakaoTransitRoutePanel {...props} active />)
+    await screen.findByText('개인화 추정')
+    fireEvent.click(screen.getByText('경로 1').closest('button')!)
+    await screen.findByRole('button', { name: '경로 목록' })
+    view.rerender(<KakaoTransitRoutePanel {...props} active={false} />)
+    view.rerender(<KakaoTransitRoutePanel {...props} active />)
+    expect(screen.getByRole('button', { name: '경로 목록' })).toBeInTheDocument()
+    expect(consoleError.mock.calls.flat().join(' ')).not.toMatch(/Hooks|hook|Rendered more|Rendered fewer/)
+    expect(kakaoTransitRouteClient.getTransitRoutes).toHaveBeenCalledOnce()
+  })
+
   it('실제 복수 차량 Egress 결과를 점선 지도·부분 ETA에 사용하고 GPS 목표로 승격하지 않는다', async () => {
     const { resolveAutomaticTransitEgress } = await vi.importActual<typeof import('../../services/routing/automaticTransitEgress')>(
       '../../services/routing/automaticTransitEgress')

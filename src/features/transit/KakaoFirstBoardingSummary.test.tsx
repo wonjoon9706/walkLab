@@ -4,6 +4,7 @@ import type { AutomaticTransitAccessResult } from '../../domain/transitBoardingP
 import type { KakaoTransitRoute } from '../../domain/kakaoTransitRoute'
 import type { KakaoRouteArrival } from './useKakaoRouteArrivals'
 import { KakaoFirstBoardingSummary } from './KakaoFirstBoardingSummary'
+import type { LiveNavigationState } from '../../domain/liveNavigation'
 
 const now = Date.parse('2026-11-04T03:00:00Z')
 const coordinate = { latitude: 37, longitude: 127 }
@@ -53,6 +54,28 @@ function arrival(): KakaoRouteArrival {
 }
 
 describe('경로 카드 첫 승차 요약', () => {
+  it('진행 중 동일 경로의 남은 시간을 표시하고 현재 시각에서 버스와 비교한다', () => {
+    if (access.status !== 'ready') throw new Error('fixture')
+    const navigation: LiveNavigationState = {
+      isActive: true, status: 'moving', route: access.accessWalk.walkingRoute, isReferenceRoute: false,
+      currentPosition: coordinate, currentAccuracyM: 5, remainingCoordinates: [],
+      remainingDistanceM: 40, progressRatio: 0.6, recentSpeedMps: 1.4, appliedSpeedMps: 1.4,
+      baselineSpeed: null, pace: 'similar', speedSource: 'recent_blended', remainingDurationSeconds: 30,
+      arrivalAt: new Date(now + 30_000).toISOString(), lastPositionAt: new Date(now).toISOString(), rerouteCount: 0, message: null,
+    }
+    const value = arrival()
+    if (value.bus?.status !== 'available') throw new Error('fixture')
+    value.bus.upcomingArrivals = [{ order: 1, arrivalSeconds: 180, remainingStops: 2, message: null }]
+    const context = { routeId: 'route', isRecording: true, navigation }
+    const { rerender } = render(<KakaoFirstBoardingSummary route={route} access={access} arrival={value} speedModel={null} now={now} walkingContext={context} />)
+    expect(screen.getByText('현재 페이스 기준 정류장까지 30초')).toBeInTheDocument()
+    expect(screen.getByText(/3분 후 · 탑승 가능성 높음/)).toBeInTheDocument()
+    rerender(<KakaoFirstBoardingSummary route={route} access={access} arrival={value} speedModel={null} now={now}
+      walkingContext={{ ...context, navigation: { ...navigation, status: 'stale' } }} />)
+    expect(screen.getByText(/현재 접근 위치 확인 필요/)).toBeInTheDocument()
+    expect(screen.getByText(/3분 후 · 확인 필요/)).toBeInTheDocument()
+    expect(screen.queryByText(/탑승 가능성 높음/)).not.toBeInTheDocument()
+  })
   it('첫째·둘째 실제 정보와 T2-3 판정을 표시한다', () => {
     render(<KakaoFirstBoardingSummary route={route} access={access} arrival={arrival()} speedModel={null} now={now} />)
     expect(screen.getByText(/1번째 정보 · 10분 후 · 탑승 가능성 높음/)).toBeInTheDocument()

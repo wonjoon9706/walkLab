@@ -57,6 +57,13 @@ function parseEnvelope(text: string): UnknownRecord[] {
   try {
     parsed = JSON.parse(text)
   } catch {
+    // 인증 실패는 resultType=json 요청에도 XML 오류 봉투로 올 수 있다.
+    // 오류 코드만 읽으며 XML 정상 데이터나 외부 엔티티는 해석하지 않는다.
+    const code = text.match(/<(?:headerCd|returnReasonCode)>\s*([^<]+)\s*<\/(?:headerCd|returnReasonCode)>/i)?.[1]?.trim()
+    const message = text.match(/<(?:headerMsg|returnAuthMsg)>\s*([^<]+)\s*<\/(?:headerMsg|returnAuthMsg)>/i)?.[1]?.trim()
+    if (code !== undefined && code !== '0' && message !== undefined) {
+      throw new SeoulBusResponseError('provider', code, message)
+    }
     throw new SeoulBusResponseError(
       'invalid_response',
       null,

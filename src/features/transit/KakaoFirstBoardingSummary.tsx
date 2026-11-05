@@ -6,18 +6,20 @@ import { composeTransitBoardingPlan } from '../../services/routing/transitBoardi
 import { calculateKakaoTransitEta, collectKakaoEtaG8WalkEvidence } from '../../services/routing/kakaoTransitEta'
 import { formatDuration } from '../../utils/format'
 import type { KakaoRouteArrival } from './useKakaoRouteArrivals'
+import { getLiveFirstBoardingAccess, type TransitLiveWalkingContext } from '../../services/navigation/transitLiveBoarding'
 
 function remainingText(seconds: number): string {
   return seconds <= 30 ? '곧 도착' : `${Math.ceil(seconds / 60)}분 후`
 }
 
-export function KakaoFirstBoardingSummary({ route, access, arrival, speedModel, now, lookupPlanned = true }: {
+export function KakaoFirstBoardingSummary({ route, access, arrival, speedModel, now, lookupPlanned = true, walkingContext }: {
   route: KakaoTransitRoute
   access: AutomaticTransitAccessResult | null
   arrival: KakaoRouteArrival | undefined
   speedModel: WalkingSpeedModel | null
   now: number
   lookupPlanned?: boolean
+  walkingContext?: TransitLiveWalkingContext
 }) {
   const first = route.steps.find((step) => step.mode === 'BUS' || step.mode === 'SUBWAY')
   const name = first?.vehicles.map((vehicle) => vehicle.name).join(' / ') || '교통편'
@@ -30,11 +32,14 @@ export function KakaoFirstBoardingSummary({ route, access, arrival, speedModel, 
     ? toStationAccessComparisonItinerary(route, access.accessWalk)
     : null
   const firstTransitIndex = itinerary?.legs.findIndex((leg) => leg.mode === 'BUS' || leg.mode === 'SUBWAY') ?? -1
+  const liveAccess = first?.mode === 'BUS' && access?.status === 'ready'
+    ? getLiveFirstBoardingAccess(route.id, access.accessWalk.walkingRoute, walkingContext, speedModel, now)
+    : undefined
   const assessment = itinerary === null || arrival?.checkedAt == null ? null
     : composeTransitBoardingPlan(itinerary, speedModel, {
       bus: arrival.bus === null ? new Map() : new Map([[firstTransitIndex, arrival.bus]]),
       subway: arrival.subway === null ? new Map() : new Map([[firstTransitIndex, arrival.subway]]),
-    }, new Date(now)).boardings.find((item) => item.legIndex === firstTransitIndex) ?? null
+    }, new Date(now), liveAccess).boardings.find((item) => item.legIndex === firstTransitIndex) ?? null
   const fetchedAt = arrival?.bus?.fetchedAt ?? arrival?.subway?.fetchedAt
   const age = fetchedAt === undefined ? Number.NaN : now - Date.parse(fetchedAt)
   const stale = !Number.isFinite(age) || age > 120_000 || age < -30_000
@@ -78,7 +83,10 @@ export function KakaoFirstBoardingSummary({ route, access, arrival, speedModel, 
   return (
     <span className="kakao-first-boarding" aria-label="첫 승차 실시간 정보">
       <strong>첫 승차 · {name} · {boardingName}</strong>
-      <span>{access?.status === 'ready'
+      <span>{liveAccess?.source === 'live_pace' ? `현재 페이스 기준 정류장까지 ${formatDuration(liveAccess.durationSeconds)}`
+        : liveAccess?.source === 'g7_remaining' ? `G7·기본속도 기준 남은 도보 ${formatDuration(liveAccess.durationSeconds)}`
+          : liveAccess?.source === 'unavailable' ? '현재 접근 위치 확인 필요 · 탑승 판단 보류'
+        : access?.status === 'ready'
         ? `접근 도보 ${formatDuration(access.accessWalk.pureWalkingDurationSeconds)}`
         : estimatedAccess !== undefined
           ? `접근 추정 도보 ${formatDuration(estimatedAccess)} · 연결 확인 필요`
@@ -92,6 +100,11 @@ export function KakaoFirstBoardingSummary({ route, access, arrival, speedModel, 
           : arrival.issue === 'boarding_unverified' ? '승차 위치·노선 확인 필요'
           : arrival.issue === 'direction_unverified' ? '정류장·운행 방향 재확인 필요'
             : arrival.issue === 'timeout' ? '도착정보 응답 지연 · 새로고침으로 확인해 주세요'
+              : arrival.issue === 'gateway_timeout' ? '운영 서버 응답 지연 · 새로고침으로 확인해 주세요'
+                : arrival.issue === 'auth_error' ? '로그인 또는 서울시 API 인증 확인 필요'
+                  : arrival.issue === 'not_configured' ? '실시간 정보 서버 설정 확인 필요'
+                    : arrival.issue === 'quota_exceeded' ? '실시간 API 호출 한도 초과 · 잠시 후 확인해 주세요'
+                      : arrival.issue === 'invalid_response' ? '실시간 제공기관 응답 형식 확인 필요'
               : '실시간 제공기관 조회 실패 · 새로고침으로 확인해 주세요'}</span>
       ) : matchUnverified ? (
         <span>승차 위치·노선·방향 확인 필요</span>
@@ -115,6 +128,9 @@ export function KakaoFirstBoardingSummary({ route, access, arrival, speedModel, 
       })}
       {(wasWaiting || hadNoArrivals) && (
         <small>대기시간 미확정 · 표시된 개인화 시간에 실시간 대기는 반영되지 않았습니다.</small>
+      )}
+      {assessment !== null && first?.mode === 'BUS' && !stale && rows.some((row) => row.usable) && (
+        <small>승차 준비와 예측 변동을 고려한 참고 판단이며 탑승을 보장하지 않습니다.</small>
       )}
       {first?.mode === 'SUBWAY' && <small>승강장 이동시간 미확인</small>}
     </span>

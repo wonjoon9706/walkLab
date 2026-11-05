@@ -15,6 +15,8 @@ export interface SeoulBusRoute {
 }
 
 export interface SeoulRouteStopArrival {
+  /** 정규화 응답을 최초 수신한 시각. 캐시 재사용 시에는 변경하지 않는다. */
+  fetchedAt?: string
   routeId: string
   routeName: string
   routeType: string | null

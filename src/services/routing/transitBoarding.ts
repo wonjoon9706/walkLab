@@ -12,11 +12,20 @@ import type { TransitItinerary } from '../../domain/transitRoute'
 import type { WalkingSpeedModel } from '../../domain/walkingSpeedModel'
 import { selectWalkingSpeedProfile } from './walkingEta'
 
+const busBoardingPreparationSeconds = 30
+const busPredictionUncertaintySeconds = 90
 export const transitBoardingPolicy = {
   liveDataMaximumAgeSeconds: 120,
-  busLikelyMarginSeconds: 120,
-  busTightMinimumMarginSeconds: 30,
+  busBoardingPreparationSeconds,
+  busPredictionUncertaintySeconds,
+  busLikelyMarginSeconds: busBoardingPreparationSeconds + busPredictionUncertaintySeconds,
+  busTightMinimumMarginSeconds: busBoardingPreparationSeconds,
 } as const
+
+export interface FirstBoardingAccessEstimate {
+  durationSeconds: number | null
+  source: 'live_pace' | 'g7_remaining' | 'unavailable'
+}
 
 interface ArrivalInputs {
   bus: ReadonlyMap<number, BusArrivalInfo>
@@ -34,6 +43,7 @@ function getFreshness(
   if (sourceTime === null) return 'missing'
   const sourceTimestamp = new Date(sourceTime).getTime()
   if (!Number.isFinite(sourceTimestamp)) return 'missing'
+  if (sourceTimestamp - calculatedAt > 30_000) return 'missing'
   const ageSeconds = Math.max(0, (calculatedAt - sourceTimestamp) / 1_000)
   return ageSeconds > transitBoardingPolicy.liveDataMaximumAgeSeconds
     ? 'stale'
@@ -231,6 +241,7 @@ export function composeTransitBoardingPlan(
   model: WalkingSpeedModel | null,
   arrivals: ArrivalInputs,
   calculatedAt: Date,
+  firstAccess?: FirstBoardingAccessEstimate,
 ): TransitBoardingPlan {
   if (Number.isNaN(calculatedAt.getTime())) throw new Error('INVALID_CALCULATION_TIME')
   const calculatedAtMs = calculatedAt.getTime()
@@ -269,6 +280,20 @@ export function composeTransitBoardingPlan(
       return
     }
 
+    // 진행 중 첫 버스의 접근시간만 대체한다. 이미 걸은 거리를 다시 더하지 않는다.
+    // 입력이 없는 기존 T2-3/T2-4A 및 지하철 계산은 그대로 유지한다.
+    if (leg.mode === 'BUS' && boardings.length === 0 && firstAccess !== undefined) {
+      if (firstAccess.durationSeconds === null || !Number.isFinite(firstAccess.durationSeconds) || firstAccess.durationSeconds < 0) {
+        boardings.push(unavailableAssessment(legIndex, 'BUS', 'unavailable',
+          getFreshness(arrivals.bus.get(legIndex)?.fetchedAt ?? null, calculatedAtMs),
+          0, null, '현재 접근 위치·속도를 확인할 수 없어 탑승 판단을 보류합니다.'))
+        timelineKnown = false
+        accessDurationSeconds = 0
+        return
+      }
+      accessDurationSeconds = firstAccess.durationSeconds
+      cursor = calculatedAtMs + firstAccess.durationSeconds * 1_000
+    }
     const assessment = leg.mode === 'BUS'
       ? assessBus(
         legIndex,

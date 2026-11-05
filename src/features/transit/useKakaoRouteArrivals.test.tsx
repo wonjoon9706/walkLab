@@ -4,11 +4,14 @@ import type { KakaoTransitRoute } from '../../domain/kakaoTransitRoute'
 import type { SubwayArrivalInfo } from '../../domain/subwayArrival'
 import { SubwayArrivalError } from '../../domain/subwayArrival'
 import { useKakaoRouteArrivals } from './useKakaoRouteArrivals'
+import { resolveAutomaticTransitAccess } from '../../services/routing/automaticTransitAccess'
+import type { SeoulRouteStopArrival } from '../../domain/seoulBus'
 
-const { getSubwayArrival } = vi.hoisted(() => ({ getSubwayArrival: vi.fn() }))
+const { getSubwayArrival, getRouteArrivals } = vi.hoisted(() => ({ getSubwayArrival: vi.fn(), getRouteArrivals: vi.fn() }))
 vi.mock('../../services/transitArrival/subwayArrivalClient', () => ({
   subwayArrivalClient: { getSubwayArrival },
 }))
+vi.mock('../../services/routing/seoulBusEvidenceClient', () => ({ seoulBusEvidenceClient: { getRouteArrivals } }))
 
 const route: KakaoTransitRoute = {
   id: 'route', type: 'SUBWAY', totalDistanceM: 5_000, totalDurationSeconds: 900,
@@ -23,9 +26,72 @@ function arrival(): SubwayArrivalInfo {
     fetchedAt: new Date().toISOString(), provider: 'seoul-subway', dataMode: 'live' }
 }
 
+const busRoute: KakaoTransitRoute = { ...route, type: 'BUS', steps: [{ ...route.steps[0], mode: 'BUS',
+  vehicles: [{ index: 0, name: '테스트17', type: null }],
+  stops: [{ index: 0, name: '테스트 승차' }, { index: 1, name: '테스트 하차' }],
+  coordinates: [{ latitude: 0, longitude: 0 }, { latitude: 0, longitude: 0.001 }],
+}] }
+const busStops: SeoulRouteStopArrival[] = ['테스트 승차', '테스트 하차'].map((stopName, i) => ({
+  routeId: 'bus', routeName: '테스트17', routeType: null, stopId: `stop${i}`, arsId: null,
+  stopName, sequence: i + 1, fetchedAt: new Date().toISOString(),
+  estimates: [{ order: 1, arrivalSeconds: 360, remainingStops: 3, message: null }],
+}))
+function resolveBusAccess(fail = false) {
+  return resolveAutomaticTransitAccess({ route: busRoute,
+    origin: { coordinate: { latitude: 0, longitude: -0.0001 }, verification: 'searched_place', note: null },
+    speed: { kind: 'g7_model', model: null }, signal: new AbortController().signal,
+  }, { seoulBusProvider: {
+    getNearbyStops: async () => { if (fail) throw new Error('REQUEST_TIMEOUT'); return [{ stopId: 'stop0', arsId: '10001', name: '테스트 승차', coordinate: { latitude: 0, longitude: 0 } }] },
+    getRoutesAtStop: async () => [{ routeId: 'bus', routeName: '테스트17', routeType: null }],
+    getRouteArrivals: async () => busStops,
+  }, searchPlaces: async () => [], getWalkingRoute: async ({ start, destination }) => ({
+    distanceM: 12, providerDurationSeconds: 10, coordinates: [start, destination], provider: 'kakao-walking-route', requestedAt: new Date().toISOString(),
+  }) })
+}
+
 describe('카카오 경로별 첫 승차 조회', () => {
-  beforeEach(() => { getSubwayArrival.mockReset().mockImplementation(async () => arrival()) })
+  beforeEach(() => { getSubwayArrival.mockReset().mockImplementation(async () => arrival()); getRouteArrivals.mockReset().mockResolvedValue(busStops) })
   afterEach(() => vi.useRealTimers())
+
+  it('실제 정류장 검증기의 504를 후보 없음과 구분하고 수동 재검증 후 버스 조회를 복구한다', async () => {
+    const { result } = renderHook(useKakaoRouteArrivals)
+    const failed = await resolveBusAccess(true)
+    const signal = new AbortController().signal
+    await act(async () => result.current.ensure(busRoute, failed, signal))
+    expect(getRouteArrivals).not.toHaveBeenCalled()
+    expect(result.current.entries.get(busRoute.id)).toMatchObject({ issue: 'timeout', errorCode: 'REQUEST_TIMEOUT' })
+    const verified = await resolveBusAccess()
+    expect(verified.status).toBe('ready')
+    await act(async () => result.current.ensure(busRoute, verified, signal, true))
+    expect(getRouteArrivals).toHaveBeenCalledOnce()
+    expect(result.current.entries.get(busRoute.id)?.bus).toMatchObject({ status: 'available', arrivalSeconds: 360, stopId: 'stop0' })
+  })
+
+  it('단일 정류장의 G8 스냅 review는 도착정보 조회를 막지 않지만 방향이 다르면 배제한다', async () => {
+    const access = await resolveBusAccess()
+    const reviewed = { ...access, status: 'review_required' as const, reason: 'ACCESS_WALK_REVIEW_REQUIRED' as const,
+      detailReason: 'WALKING_ENDPOINT_MISMATCH' as const }
+    const { result } = renderHook(useKakaoRouteArrivals)
+    const signal = new AbortController().signal
+    await act(async () => result.current.ensure(busRoute, reviewed, signal))
+    expect(result.current.entries.get(busRoute.id)?.bus?.status).toBe('available')
+    getRouteArrivals.mockResolvedValue([busStops[0], { ...busStops[1], stopName: '반대 방향' }])
+    act(() => result.current.reset())
+    await act(async () => result.current.ensure(busRoute, reviewed, signal, true))
+    expect(result.current.entries.get(busRoute.id)?.issue).toBe('direction_unverified')
+  })
+
+  it.each([
+    ['SEOUL_BUS_AUTH_ERROR', 'auth_error'], ['REQUEST_TIMEOUT', 'timeout'],
+    ['GATEWAY_TIMEOUT', 'gateway_timeout'], ['FUNCTION_INVOCATION_TIMEOUT', 'gateway_timeout'],
+    ['SERVER_NOT_CONFIGURED', 'not_configured'], ['INVALID_RESPONSE', 'invalid_response'],
+  ])('버스 오류 %s를 %s로 보존한다', async (code, issue) => {
+    const access = await resolveBusAccess()
+    getRouteArrivals.mockRejectedValue(new Error(code))
+    const { result } = renderHook(useKakaoRouteArrivals)
+    await act(async () => result.current.ensure(busRoute, access, new AbortController().signal))
+    expect(result.current.entries.get(busRoute.id)).toMatchObject({ issue, errorCode: code })
+  })
 
   it('서버 운영 제한을 일반 조회 실패와 구분한다', async () => {
     getSubwayArrival.mockRejectedValue(new SubwayArrivalError('PRODUCTION_DISABLED', '운영 통신 미확인'))

@@ -50,6 +50,7 @@ export async function readJsonBody(request: RequestWithBody): Promise<unknown> {
 
 export async function authenticateAllowedTransitUser(
   request: IncomingMessage,
+  signal?: AbortSignal,
 ): Promise<
   | { ok: true; userId: string }
   | { ok: false; statusCode: 401 | 403 | 503; code: string; message: string }
@@ -69,6 +70,9 @@ export async function authenticateAllowedTransitUser(
   }
   const client = createClient(supabaseUrl, publishableKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    ...(signal === undefined ? {} : { global: {
+      fetch: (input, init) => fetch(input, { ...init, signal }),
+    } }),
   })
   const { data, error } = await client.auth.getUser(token)
   if (error !== null || data.user === null) {
