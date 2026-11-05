@@ -54,6 +54,7 @@ const idleMeasurement: MeasurementContextValue = {
   startMeasurement: vi.fn(),
   stopMeasurement: vi.fn(),
   subscribeGps: vi.fn(),
+  getMeasurementState: () => idleMeasurement,
 }
 
 function renderRoute(

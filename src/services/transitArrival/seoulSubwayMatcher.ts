@@ -1,4 +1,4 @@
-import type { SubwayTrainType } from '../../domain/subwayArrival'
+import type { SubwayTrainType } from '../../domain/subwayArrival.js'
 
 const SEOUL_SUBWAY_ID_BY_TMAP_TYPE: Readonly<Record<number, string>> = {
   1: '1001',

@@ -6,11 +6,20 @@ import type { WalkingSpeedModel } from '../../domain/walkingSpeedModel'
 import { createKakaoTransitRouteClient, kakaoTransitRouteClient } from '../../services/routing/kakaoTransitRouteClient'
 import { KakaoTransitRoutePanel } from './KakaoTransitRoutePanel'
 
-const { resolveAccessMock, resolveEgressMock, getRouteArrivalsMock, getSubwayArrivalMock } = vi.hoisted(() => ({
+vi.mock('./useTransitAccessRecording', () => ({
+  useTransitAccessRecording: () => ({
+    isActive: false,
+    state: { phase: 'idle', routeId: null, currentPosition: null, message: null },
+    start: startRecordingMock, finish: vi.fn(),
+  }),
+}))
+
+const { resolveAccessMock, resolveEgressMock, getRouteArrivalsMock, getSubwayArrivalMock, startRecordingMock } = vi.hoisted(() => ({
   resolveAccessMock: vi.fn(),
   resolveEgressMock: vi.fn(),
   getRouteArrivalsMock: vi.fn(),
   getSubwayArrivalMock: vi.fn(),
+  startRecordingMock: vi.fn(),
 }))
 
 vi.mock('../../services/routing/seoulBusEvidenceClient', () => ({
@@ -186,6 +195,7 @@ function renderPanel(strict = false) {
 
 describe('카카오 개인화 ETA 화면 연결', () => {
   beforeEach(() => {
+    startRecordingMock.mockReset()
     getRouteArrivalsMock.mockReset().mockResolvedValue([
       { routeId: 'route-id', stopId: 'stop', stopName: '첫 정류장', sequence: 1, estimates: [] },
       { routeId: 'route-id', stopId: 'next', stopName: '다음 정류장', sequence: 2, estimates: [] },
@@ -246,6 +256,7 @@ describe('카카오 개인화 ETA 화면 연결', () => {
     })
 
     expect(await screen.findByText('26분 40초')).toBeInTheDocument()
+    expect(startRecordingMock).not.toHaveBeenCalled()
     expect(screen.getByText(/도보 1.10 km/)).toBeInTheDocument()
     expect(await screen.findByText(/1번째 정보 · 6분 후 · 탑승 가능성 높음/)).toBeInTheDocument()
     expect(screen.getByLabelText('이동 수단 순서').textContent).toMatch(/^도보.*BUS.*도보.*SUBWAY.*도보$/)
@@ -253,6 +264,9 @@ describe('카카오 개인화 ETA 화면 연결', () => {
     fireEvent.click(screen.getByRole('button', { name: /경로 1/ }))
 
     expect(await screen.findByText('선택 경로 지도')).toBeInTheDocument()
+    expect(startRecordingMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: '안내 시작' }))
+    expect(startRecordingMock).toHaveBeenCalledTimes(1)
     expect(screen.getByText('출발 도보')).toBeInTheDocument()
     expect(screen.getByText('하차 후 도보')).toBeInTheDocument()
     expect(resolveAccessMock).toHaveBeenCalledTimes(1)

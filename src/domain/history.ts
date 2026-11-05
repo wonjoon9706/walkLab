@@ -1,4 +1,4 @@
-import type { LocalWalkSession, RawGpsPoint } from './measurement'
+import type { LocalWalkSession, RawGpsPoint } from './measurement.js'
 
 export interface WalkHistoryItem {
   id: string

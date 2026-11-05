@@ -1,4 +1,4 @@
-import type { GeoCoordinate, WalkingSpeedProfile } from './walkingRoute'
+import type { GeoCoordinate, WalkingSpeedProfile } from './walkingRoute.js'
 
 export type TransitMode =
   | 'WALK'

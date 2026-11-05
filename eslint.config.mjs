@@ -26,7 +26,7 @@ export default typescriptEslint.config(
     },
   },
   {
-    files: ['api/**/*.ts'],
+    files: ['api/**/*.ts', 'server/**/*.ts'],
     languageOptions: {
       globals: globals.node,
     },

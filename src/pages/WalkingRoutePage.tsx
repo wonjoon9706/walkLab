@@ -914,7 +914,7 @@ export function WalkingRoutePage() {
 
       {origin !== null && destination !== null && (
         <TransitRoutePanel
-          key={sharedRouteKey}
+          key={`${ownerUserId}:${sharedRouteKey}`}
           active={!navigation.isActive && activeMode === 'transit' && !isMapOriginSelectionEnabled}
           origin={origin}
           originSource={originSource}

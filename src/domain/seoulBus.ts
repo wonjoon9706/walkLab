@@ -1,5 +1,5 @@
-import type { BusArrivalEstimate } from './busArrival'
-import type { GeoCoordinate } from './walkingRoute'
+import type { BusArrivalEstimate } from './busArrival.js'
+import type { GeoCoordinate } from './walkingRoute.js'
 
 export interface SeoulBusStop {
   stopId: string

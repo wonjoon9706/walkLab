@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { SeoulSubwayArrivalRecord } from '../../src/domain/seoulSubway'
-import type { SubwayArrivalRequest } from '../../src/domain/subwayArrival'
-import { resolveSeoulSubwayArrival } from './resolveSeoulSubwayArrival'
+import type { SeoulSubwayArrivalRecord } from '../../src/domain/seoulSubway.js'
+import type { SubwayArrivalRequest } from '../../src/domain/subwayArrival.js'
+import { resolveSeoulSubwayArrival } from './resolveSeoulSubwayArrival.js'
 
 const now = new Date('2026-11-03T03:01:00.000Z')
 

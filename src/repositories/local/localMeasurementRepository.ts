@@ -27,6 +27,7 @@ export interface CreateSessionInput {
   startedAt: string
   sourcePlatform: string
   eventId: string
+  startEventDetails?: MeasurementEvent['details']
 }
 
 export interface SaveEventInput {
@@ -205,6 +206,7 @@ export function createLocalMeasurementRepository(
         eventType: 'measurement_start_requested',
         occurredAt: input.startedAt,
         receivedAt: input.startedAt,
+        details: input.startEventDetails ?? null,
       })
 
       // 세션, 시작 이벤트와 각각의 전송 대기 항목은 함께 저장되어야 한다.

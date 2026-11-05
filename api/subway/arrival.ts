@@ -8,12 +8,12 @@ import type {
   SubwayArrivalRequest,
   SubwayTrainType,
 } from '../../src/domain/subwayArrival.js'
-import { resolveSeoulSubwayArrival } from './resolveSeoulSubwayArrival.js'
+import { resolveSeoulSubwayArrival } from '../../server/subway/resolveSeoulSubwayArrival.js'
 import {
   createSeoulSubwayProvider,
   SeoulSubwayHttpError,
-} from './seoulSubwayProvider.js'
-import { SeoulSubwayResponseError } from './seoulSubwayResponseParser.js'
+} from '../../server/subway/seoulSubwayProvider.js'
+import { SeoulSubwayResponseError } from '../../server/subway/seoulSubwayResponseParser.js'
 
 const REQUEST_TIMEOUT_MS = 8_000
 const RESULT_CACHE_TTL_MS = 30_000

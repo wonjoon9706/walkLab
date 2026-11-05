@@ -8,7 +8,7 @@ import {
   readJsonBody,
   sendJson,
   type RequestWithBody,
-} from '../shared/localTransitAuth.js'
+} from '../../server/shared/localTransitAuth.js'
 
 const KAKAO_TRANSIT_URL = 'https://dapi.kakao.com/v2/routing/publictraffic'
 const REQUEST_TIMEOUT_MS = 10_000

@@ -8,9 +8,9 @@ import type {
   KakaoTransitStep,
   KakaoTransitStopEvidence,
   KakaoTransitVehicleEvidence,
-} from '../../domain/kakaoTransitRoute'
-import { KakaoTransitResponseError } from '../../domain/kakaoTransitRoute'
-import type { GeoCoordinate } from '../../domain/walkingRoute'
+} from '../../domain/kakaoTransitRoute.js'
+import { KakaoTransitResponseError } from '../../domain/kakaoTransitRoute.js'
+import type { GeoCoordinate } from '../../domain/walkingRoute.js'
 
 const STEP_MODES = new Set<KakaoTransitMode>([
   'BUS',

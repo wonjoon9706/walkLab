@@ -9,20 +9,20 @@ import {
   type TagoCityCode,
 } from '../../src/domain/busArrival.js'
 import { TagoResponseError } from '../../src/services/transitArrival/tagoResponseParser.js'
-import { resolveTagoBusArrival } from './resolveBusArrival.js'
-import { resolveSeoulBusArrival } from './resolveSeoulBusArrival.js'
+import { resolveTagoBusArrival } from '../../server/tago/resolveBusArrival.js'
+import { resolveSeoulBusArrival } from '../../server/tago/resolveSeoulBusArrival.js'
 import {
   createSeoulBusProvider,
   SeoulBusHttpError,
   SeoulBusProviderStageError,
-} from './seoulBusProvider.js'
-import { SeoulBusResponseError } from './seoulBusResponseParser.js'
+} from '../../server/tago/seoulBusProvider.js'
+import { SeoulBusResponseError } from '../../server/tago/seoulBusResponseParser.js'
 import {
   createTagoProvider,
   resetTagoProviderCacheForTests,
   TagoHttpError,
   TagoProviderStageError,
-} from './tagoProvider.js'
+} from '../../server/tago/tagoProvider.js'
 
 const REQUEST_TIMEOUT_MS = 8_000
 const RESULT_CACHE_TTL_MS = 30_000

@@ -9,7 +9,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ auth: { getUser: getUserMock } }),
 }))
 
-import handler from './walking-route'
+import handler from '../../api/kakao/walking-route.js'
 
 interface FakeResponse {
   response: ServerResponse

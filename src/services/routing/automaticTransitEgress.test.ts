@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { SeoulBusProvider } from '../../../api/tago/seoulBusProvider'
+import type { SeoulBusProvider } from '../../../server/tago/seoulBusProvider'
 import type { SeoulRouteStopArrival } from '../../domain/seoulBus'
 import type { KakaoTransitRoute } from '../../domain/kakaoTransitRoute'
 import type { PlaceSearchResult, WalkingRoute } from '../../domain/walkingRoute'

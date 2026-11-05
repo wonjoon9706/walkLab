@@ -5,7 +5,7 @@ import type {
   TagoStopRoute,
   TagoRouteStop,
   TagoRouteStopPage,
-} from '../../domain/busArrival'
+} from '../../domain/busArrival.js'
 
 type UnknownRecord = Record<string, unknown>
 

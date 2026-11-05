@@ -19,6 +19,7 @@ import {
   type MeasurementContextValue,
 } from './measurementContext'
 import { useSync } from '../sync/syncContext'
+import type { MeasurementEvent } from '../../domain/measurement'
 
 interface MeasurementProviderProps {
   children: ReactNode
@@ -110,12 +111,13 @@ export function MeasurementProvider({
   }, [manager])
 
   const startMeasurement = useCallback(
-    (mode?: MeasurementMode) =>
-      manager.start({ user, confirmCurrentUser, mode }),
+    (mode?: MeasurementMode, details?: MeasurementEvent['details']) =>
+      manager.start({ user, confirmCurrentUser, mode, details }),
     [confirmCurrentUser, manager, user],
   )
 
   const stopMeasurement = useCallback(() => manager.stop(), [manager])
+  const getMeasurementState = useCallback(() => manager.getState(), [manager])
   const subscribeGps = useCallback(
     (onPosition: PositionCallback, onError: PositionErrorCallback) =>
       manager.subscribeGps(onPosition, onError),
@@ -131,6 +133,7 @@ export function MeasurementProvider({
       isActive,
       startMeasurement,
       stopMeasurement,
+      getMeasurementState,
       subscribeGps,
     }),
     [
@@ -138,6 +141,7 @@ export function MeasurementProvider({
       measurementState,
       startMeasurement,
       stopMeasurement,
+      getMeasurementState,
       subscribeGps,
     ],
   )

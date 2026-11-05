@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { BusArrivalRequest } from '../../src/domain/busArrival'
-import type { SeoulRouteStopArrival } from '../../src/domain/seoulBus'
-import type { SeoulBusProvider } from './seoulBusProvider'
-import { resolveSeoulBusArrival } from './resolveSeoulBusArrival'
+import type { BusArrivalRequest } from '../../src/domain/busArrival.js'
+import type { SeoulRouteStopArrival } from '../../src/domain/seoulBus.js'
+import type { SeoulBusProvider } from './seoulBusProvider.js'
+import { resolveSeoulBusArrival } from './resolveSeoulBusArrival.js'
 
 const request: BusArrivalRequest = {
   routeName: '지선:2222',

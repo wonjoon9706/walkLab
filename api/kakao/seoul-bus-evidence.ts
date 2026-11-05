@@ -1,5 +1,5 @@
 import type { ServerResponse } from 'node:http'
-import { createSeoulBusProvider } from '../tago/seoulBusProvider.js'
+import { createSeoulBusProvider } from '../../server/tago/seoulBusProvider.js'
 import {
   authenticateAllowedTransitUser,
   isRemoteDeployment,
@@ -8,7 +8,7 @@ import {
   readJsonBody,
   sendJson,
   type RequestWithBody,
-} from '../shared/localTransitAuth.js'
+} from '../../server/shared/localTransitAuth.js'
 
 loadLocalEnvironment()
 

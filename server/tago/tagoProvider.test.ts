@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createTagoProvider, resetTagoProviderCacheForTests } from './tagoProvider'
+import { createTagoProvider, resetTagoProviderCacheForTests } from './tagoProvider.js'
 
 function routeStopResponse(items: unknown[], totalCount: number): Response {
   return new Response(JSON.stringify({

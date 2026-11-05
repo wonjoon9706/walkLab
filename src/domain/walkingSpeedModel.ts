@@ -1,7 +1,7 @@
 import type {
   AnalysisExclusionReason,
   SessionComparison,
-} from './movementAnalysis'
+} from './movementAnalysis.js'
 
 export type LearningExclusionReason =
   | AnalysisExclusionReason

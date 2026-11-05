@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   createSeoulBusProvider,
   SeoulBusProviderStageError,
-} from './seoulBusProvider'
+} from './seoulBusProvider.js'
 
 function response(itemList: unknown): Response {
   return new Response(JSON.stringify({

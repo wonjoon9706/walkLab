@@ -1,4 +1,4 @@
-import type { WalkingSpeedModel } from './walkingSpeedModel'
+import type { WalkingSpeedModel } from './walkingSpeedModel.js'
 
 export interface GeoCoordinate {
   latitude: number

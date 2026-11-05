@@ -7,7 +7,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ auth: { getUser: getUserMock } }),
 }))
 
-import handler, { resetSubwayArrivalStateForTests } from './arrival'
+import handler, { resetSubwayArrivalStateForTests } from '../../api/subway/arrival.js'
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
 

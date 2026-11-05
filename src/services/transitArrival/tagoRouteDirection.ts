@@ -1,9 +1,9 @@
-import type { TagoRouteStop, TagoStopCandidate } from '../../domain/busArrival'
-import type { GeoCoordinate } from '../../domain/walkingRoute'
+import type { TagoRouteStop, TagoStopCandidate } from '../../domain/busArrival.js'
+import type { GeoCoordinate } from '../../domain/walkingRoute.js'
 import {
   getCoordinateDistanceMeters,
   isSameStopName,
-} from './tagoStopMatcher'
+} from './tagoStopMatcher.js'
 
 const MAX_STOP_DISTANCE_M = 120
 

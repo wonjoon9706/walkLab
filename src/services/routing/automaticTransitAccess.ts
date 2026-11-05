@@ -1,4 +1,4 @@
-import type { SeoulBusProvider } from '../../../api/tago/seoulBusProvider'
+import type { SeoulBusProvider } from '../../../server/tago/seoulBusProvider'
 import type { SeoulRouteStopArrival } from '../../domain/seoulBus'
 import type {
   AutomaticTransitAccessResult,

@@ -2,9 +2,9 @@ import type {
   TagoStopCandidate,
   TagoStopMatchResult,
   TagoStopRoute,
-} from '../../domain/busArrival'
-import type { TransitRouteLeg, TransitStop } from '../../domain/transitRoute'
-import type { GeoCoordinate } from '../../domain/walkingRoute'
+} from '../../domain/busArrival.js'
+import type { TransitRouteLeg, TransitStop } from '../../domain/transitRoute.js'
+import type { GeoCoordinate } from '../../domain/walkingRoute.js'
 
 const MAX_MATCH_DISTANCE_M = 120
 const MAX_DIRECTION_DIFFERENCE_DEGREES = 60

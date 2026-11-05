@@ -4,7 +4,7 @@ import {
   parseSeoulRouteArrivals,
   parseSeoulRoutesAtStop,
   SeoulBusResponseError,
-} from './seoulBusResponseParser'
+} from './seoulBusResponseParser.js'
 
 function response(itemList: unknown, itemCount = 0): string {
   return JSON.stringify({

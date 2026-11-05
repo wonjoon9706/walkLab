@@ -17,9 +17,11 @@ import { TransitRouteMap } from './TransitRouteMap'
 function createFakeMaps() {
   const polylineOptions: Array<{ strokeColor: string; strokeStyle?: string }> = []
   const markerOptions: unknown[] = []
+  const setPosition = vi.fn()
+  const setCenter = vi.fn()
   class LatLng {}
   class LatLngBounds { extend = vi.fn() }
-  class Map { addControl = vi.fn(); setBounds = vi.fn() }
+  class Map { addControl = vi.fn(); setBounds = vi.fn(); setCenter = setCenter }
   class Polyline {
     constructor(options: { strokeColor: string; strokeStyle?: string }) {
       polylineOptions.push(options)
@@ -29,6 +31,7 @@ function createFakeMaps() {
   class Marker {
     constructor(options: unknown) { markerOptions.push(options) }
     setMap = vi.fn()
+    setPosition = setPosition
   }
   class MarkerImage {}
   class Size {}
@@ -46,7 +49,7 @@ function createFakeMaps() {
     ZoomControl,
     ControlPosition: { RIGHT: 'right' },
   } as unknown as KakaoMapsNamespace
-  return { maps, polylineOptions, markerOptions }
+  return { maps, polylineOptions, markerOptions, setPosition, setCenter }
 }
 
 const itinerary: TransitItinerary = {
@@ -77,6 +80,22 @@ const itinerary: TransitItinerary = {
 }
 
 describe('TransitRouteMap', () => {
+  it('GPS 갱신은 현재 위치 마커만 이동시키고 전체 경로를 다시 만들지 않는다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+    const start = { latitude: 37.5, longitude: 127.1 }
+    const destination = { latitude: 37.6, longitude: 127.2 }
+    const { rerender } = render(<TransitRouteMap itinerary={itinerary} start={start} destination={destination} />)
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(2))
+    rerender(<TransitRouteMap itinerary={itinerary} start={start} destination={destination}
+      currentPosition={{ latitude: 37.51, longitude: 127.11 }} />)
+    await waitFor(() => expect(fake.markerOptions).toHaveLength(3))
+    rerender(<TransitRouteMap itinerary={itinerary} start={start} destination={destination}
+      currentPosition={{ latitude: 37.52, longitude: 127.12 }} />)
+    expect(fake.setPosition).toHaveBeenCalledOnce()
+    expect(fake.polylineOptions).toHaveLength(2)
+    expect(fake.setCenter).toHaveBeenCalledOnce()
+  })
   it('0초·0m leg는 제외하고 도보와 대중교통 leg를 각각 그린다', async () => {
     const fake = createFakeMaps()
     loadKakaoMapSdkMock.mockResolvedValue(fake.maps)

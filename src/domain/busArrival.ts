@@ -1,4 +1,4 @@
-import type { GeoCoordinate } from './walkingRoute'
+import type { GeoCoordinate } from './walkingRoute.js'
 
 export type BusArrivalLookupStatus =
   | 'available'

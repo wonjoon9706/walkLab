@@ -10,6 +10,8 @@ import {
   loadKakaoMapSdk,
   type KakaoMapOverlay,
   type KakaoMapsNamespace,
+  type KakaoMarker,
+  type KakaoMapInstance,
 } from './kakaoMapSdk'
 
 interface TransitRouteMapProps {
@@ -17,7 +19,10 @@ interface TransitRouteMapProps {
   start: GeoCoordinate
   destination: GeoCoordinate
   referenceWalks?: TransitReferenceWalkOverlay[]
+  currentPosition?: GeoCoordinate | null
 }
+
+const EMPTY_REFERENCE_WALKS: TransitReferenceWalkOverlay[] = []
 
 function createMarkerImage(
   maps: KakaoMapsNamespace,
@@ -58,11 +63,14 @@ export function TransitRouteMap({
   itinerary,
   start,
   destination,
-  referenceWalks = [],
+  referenceWalks = EMPTY_REFERENCE_WALKS,
+  currentPosition = null,
 }: TransitRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [mapError, setMapError] = useState<string | null>(null)
   const javaScriptKey = publicEnvironment.kakaoMapJavaScriptKey
+  const runtimeRef = useRef<{ maps: KakaoMapsNamespace; map: KakaoMapInstance; marker: KakaoMarker | null } | null>(null)
+  const [mapVersion, setMapVersion] = useState(0)
 
   useEffect(() => {
     const container = containerRef.current
@@ -191,6 +199,8 @@ export function TransitRouteMap({
           }),
         )
         map.setBounds(bounds, 40, 40, 40, 40)
+        runtimeRef.current = { maps, map, marker: null }
+        setMapVersion((value) => value + 1)
       })
       .catch(() => {
         if (!isDisposed) {
@@ -200,10 +210,30 @@ export function TransitRouteMap({
 
     return () => {
       isDisposed = true
+      runtimeRef.current?.marker?.setMap(null)
+      runtimeRef.current = null
       overlays.forEach((overlay) => overlay.setMap(null))
       container.replaceChildren()
     }
   }, [destination, itinerary, javaScriptKey, referenceWalks, start])
+
+  useEffect(() => {
+    const runtime = runtimeRef.current
+    if (runtime === null) return
+    if (currentPosition === null) {
+      runtime.marker?.setMap(null)
+      runtime.marker = null
+      return
+    }
+    const position = new runtime.maps.LatLng(currentPosition.latitude, currentPosition.longitude)
+    if (runtime.marker === null) {
+      runtime.marker = new runtime.maps.Marker({
+        map: runtime.map, position,
+        image: createMarkerImage(runtime.maps, '#246bdd', 'GPS 내 위치'),
+      })
+      runtime.map.setCenter(position)
+    } else runtime.marker.setPosition(position)
+  }, [currentPosition, mapVersion])
 
   if (javaScriptKey === null) {
     return <p className="error-message">카카오맵 설정이 없습니다.</p>
@@ -222,6 +252,7 @@ export function TransitRouteMap({
         <span className="filtered-route-key">버스·지하철</span>
         <span className="start-point-key">출발지</span>
         <span className="end-point-key">목적지</span>
+        {currentPosition !== null && <span>GPS 내 위치</span>}
         {referenceWalks.length > 0 && (
           <span className="reference-walk-key">G8 참고 경로(연결 미확인)</span>
         )}

@@ -42,6 +42,7 @@ export interface StartMeasurementInput {
   user: AuthenticatedUser | null
   confirmCurrentUser: () => Promise<AuthenticatedUser | null>
   mode?: MeasurementMode
+  details?: MeasurementEvent['details']
 }
 
 export interface MeasurementManager {
@@ -227,7 +228,7 @@ export function createMeasurementManager(
   function handlePosition(position: GeolocationPosition) {
     const activeSession = requireActiveSession()
 
-    if (activeSession === null || !isActive()) {
+    if (activeSession === null || !isActive() || stopInProgress) {
       return
     }
 
@@ -292,7 +293,7 @@ export function createMeasurementManager(
   function handlePositionError(error: GeolocationPositionError) {
     const activeSession = requireActiveSession()
 
-    if (activeSession === null || !isActive()) {
+    if (activeSession === null || !isActive() || stopInProgress) {
       return
     }
 
@@ -431,6 +432,7 @@ export function createMeasurementManager(
           startedAt,
           sourcePlatform: dependencies.getSourcePlatform(),
           eventId: dependencies.createId(),
+          startEventDetails: input.details,
         })
 
         sequenceNo = 0

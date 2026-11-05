@@ -7,7 +7,7 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ auth: { getUser: getUserMock } }),
 }))
 
-import handler from './transit-routes'
+import handler from '../../api/kakao/transit-routes.js'
 
 const USER_ID = '11111111-1111-4111-8111-111111111111'
 

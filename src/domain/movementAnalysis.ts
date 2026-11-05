@@ -1,4 +1,4 @@
-import type { WalkMetricsResult } from './history'
+import type { WalkMetricsResult } from './history.js'
 
 export type MovementState = 'moving' | 'stationary' | 'uncertain'
 

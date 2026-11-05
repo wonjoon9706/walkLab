@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { BusArrivalRequest, TagoStopCandidate } from '../../src/domain/busArrival'
-import type { TagoProvider } from './tagoProvider'
-import { resolveTagoBusArrival } from './resolveBusArrival'
+import type { BusArrivalRequest, TagoStopCandidate } from '../../src/domain/busArrival.js'
+import type { TagoProvider } from './tagoProvider.js'
+import { resolveTagoBusArrival } from './resolveBusArrival.js'
 
 const request: BusArrivalRequest = {
   routeName: '직행좌석:7800',

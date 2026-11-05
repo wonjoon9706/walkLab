@@ -16,7 +16,8 @@
     "test:db": "supabase test db",
     "db:start": "supabase start",
     "db:reset": "supabase db reset",
-    "build": "tsc -b && vite build",
+    "check:server": "node scripts/check-server.mjs",
+    "build": "tsc -b && npm run check:server && vite build",
     "preview": "vite preview",
     "check:g0": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-g0.ps1"
   },

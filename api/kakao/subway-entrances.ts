@@ -6,7 +6,7 @@ import {
   readJsonBody,
   sendJson,
   type RequestWithBody,
-} from '../shared/localTransitAuth.js'
+} from '../../server/shared/localTransitAuth.js'
 
 loadLocalEnvironment()
 

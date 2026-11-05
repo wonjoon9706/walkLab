@@ -3,10 +3,12 @@ import type {
   MeasurementMode,
   MeasurementState,
 } from './measurementManager'
+import type { MeasurementEvent } from '../../domain/measurement'
 
 export interface MeasurementContextValue extends MeasurementState {
   isActive: boolean
-  startMeasurement: (mode?: MeasurementMode) => Promise<boolean>
+  startMeasurement: (mode?: MeasurementMode, details?: MeasurementEvent['details']) => Promise<boolean>
+  getMeasurementState: () => MeasurementState
   stopMeasurement: () => Promise<void>
   subscribeGps: (
     onPosition: PositionCallback,

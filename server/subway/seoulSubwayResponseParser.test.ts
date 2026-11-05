@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseSeoulSubwayArrivals,
   SeoulSubwayResponseError,
-} from './seoulSubwayResponseParser'
+} from './seoulSubwayResponseParser.js'
 
 function response(items: unknown[]): string {
   return JSON.stringify({

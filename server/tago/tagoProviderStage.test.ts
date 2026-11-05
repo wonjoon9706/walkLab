@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createTagoProvider, TagoProviderStageError } from './tagoProvider'
+import { createTagoProvider, TagoProviderStageError } from './tagoProvider.js'
 
 describe('TAGO provider 실패 단계', () => {
   it('응답 형식 오류에 인근 정류장 조회 단계를 보존한다', async () => {

@@ -40,6 +40,9 @@ import { formatDistance, formatDuration } from '../../utils/format'
 import { TransitRouteMap } from '../map/TransitRouteMap'
 import { useKakaoRouteArrivals } from './useKakaoRouteArrivals'
 import { KakaoFirstBoardingSummary } from './KakaoFirstBoardingSummary'
+import { useTransitAccessRecording } from './useTransitAccessRecording'
+import { TransitAccessRecordingStatus } from './TransitAccessRecordingStatus'
+import { resolveTransitRecordingTarget } from '../../services/navigation/transitAccessArrival'
 
 interface Props {
   active: boolean
@@ -404,6 +407,7 @@ export function KakaoTransitRoutePanel({
   })
   const [mapVisible, setMapVisible] = useState(false)
   const routeArrivals = useKakaoRouteArrivals()
+  const accessRecording = useTransitAccessRecording()
   const [showOtherRoutes, setShowOtherRoutes] = useState(false)
   const [directWalkStatus, setDirectWalkStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [directWalkResult, setDirectWalkResult] = useState<DirectWalkResult | null>(null)
@@ -421,6 +425,8 @@ export function KakaoTransitRoutePanel({
   }, [onMapVisibilityChange, onResultAvailabilityChange])
 
   const selected = result?.routes.find((route) => route.id === selectedId) ?? null
+  const recordingTarget = useMemo(() => selected === null ? null
+    : resolveTransitRecordingTarget(selected, detail?.routeId === selected.id ? detail.access : null), [selected, detail])
   const firstTransitStepIndex = selected?.steps.find((step) => step.mode === 'BUS' || step.mode === 'SUBWAY')?.index
   const selectedArrival = selectedId === null ? undefined : routeArrivals.entries.get(selectedId)
   const arrivalStatus = selectedArrival?.status ?? 'idle'
@@ -792,6 +798,7 @@ export function KakaoTransitRoutePanel({
   }
 
   function openRoute(route: KakaoTransitRoute) {
+    if (accessRecording.isActive && accessRecording.state.routeId !== route.id) return
     listScrollPosition.current = window.scrollY
     setView('detail')
     setMap(true)
@@ -907,6 +914,10 @@ export function KakaoTransitRoutePanel({
 
   return (
     <>
+      {view === 'list' && accessRecording.state.routeId !== null && (
+        <TransitAccessRecordingStatus state={accessRecording.state} target={recordingTarget}
+          active={accessRecording.isActive} canStart={false} onStart={() => undefined} onStop={() => { void accessRecording.finish() }} />
+      )}
       {view === 'list' && (
         <>
           {status === 'loading' && (
@@ -988,6 +999,7 @@ export function KakaoTransitRoutePanel({
                 type="button"
                 className={`transit-route-option kakao-route-option ${isSelected ? 'selected' : ''}`}
                 aria-pressed={isSelected}
+                disabled={accessRecording.isActive && accessRecording.state.routeId !== route.id}
                 onClick={() => openRoute(route)}
               >
                 <span className="transit-option-heading">
@@ -1056,9 +1068,18 @@ export function KakaoTransitRoutePanel({
                 start={origin}
                 destination={destination.coordinate}
                 referenceWalks={referenceWalks}
+                currentPosition={accessRecording.isActive ? accessRecording.state.currentPosition : null}
               />
             </section>
           )}
+          <TransitAccessRecordingStatus
+            state={!accessRecording.isActive && accessRecording.state.routeId !== selected.id
+              ? { ...accessRecording.state, phase: 'idle', message: null } : accessRecording.state}
+            target={recordingTarget} active={accessRecording.isActive}
+            canStart={detailStatus === 'ready' && firstTransitStepIndex !== undefined}
+            onStart={() => { setMap(true); void accessRecording.start(selected.id, recordingTarget) }}
+            onStop={() => { void accessRecording.finish() }}
+          />
           <section className="status-card transit-eta-card">
             <div className="transit-detail-heading">
               <div>
