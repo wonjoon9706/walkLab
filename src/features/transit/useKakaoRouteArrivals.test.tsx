@@ -2,6 +2,7 @@ import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { KakaoTransitRoute } from '../../domain/kakaoTransitRoute'
 import type { SubwayArrivalInfo } from '../../domain/subwayArrival'
+import { SubwayArrivalError } from '../../domain/subwayArrival'
 import { useKakaoRouteArrivals } from './useKakaoRouteArrivals'
 
 const { getSubwayArrival } = vi.hoisted(() => ({ getSubwayArrival: vi.fn() }))
@@ -25,6 +26,16 @@ function arrival(): SubwayArrivalInfo {
 describe('카카오 경로별 첫 승차 조회', () => {
   beforeEach(() => { getSubwayArrival.mockReset().mockImplementation(async () => arrival()) })
   afterEach(() => vi.useRealTimers())
+
+  it('서버 운영 제한을 일반 조회 실패와 구분한다', async () => {
+    getSubwayArrival.mockRejectedValue(new SubwayArrivalError('PRODUCTION_DISABLED', '운영 통신 미확인'))
+    const { result } = renderHook(useKakaoRouteArrivals)
+    await act(async () => {
+      await result.current.ensure(route, null, new AbortController().signal)
+    })
+    expect(result.current.entries.get(route.id)?.issue).toBe('service_disabled')
+    expect(result.current.entries.get(route.id)?.subway).toBeNull()
+  })
 
   it('동일 노선·승차·다음·하차역 요청을 공유하고 상세 진입에 재사용한다', async () => {
     const { result } = renderHook(useKakaoRouteArrivals)

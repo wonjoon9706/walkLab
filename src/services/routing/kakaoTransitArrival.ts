@@ -64,7 +64,6 @@ export function createKakaoSubwayArrivalRequest(
   }
   return {
     routeName,
-    routeType: null,
     trainType: getKakaoTrainType(step),
     boardingStation: { providerStationId: null, name: boardingName },
     nextStation: { providerStationId: null, name: nextName },

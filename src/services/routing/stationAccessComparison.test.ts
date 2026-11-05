@@ -22,7 +22,7 @@ function leg(
     durationSeconds: mode === 'WALK' ? 180 : 183,
     routeName: mode === 'BUS' ? '302' : mode === 'SUBWAY' ? '7호선' : null,
     routeColor: null,
-    routeType: null,
+
     startName: '시작',
     endName: '끝',
     coordinates: [],
@@ -85,7 +85,7 @@ function plan(
     walkingLegs: [{
       legIndex: 2,
       distanceM: 256,
-      tmapDurationSeconds: 240,
+      providerDurationSeconds: 240,
       pureWalkingDurationSeconds: 128,
       speedProfile: {
         speedMps: 2,

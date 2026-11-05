@@ -62,15 +62,17 @@ const providerBody = {
 beforeEach(() => {
   process.env.VITE_SUPABASE_URL = 'https://example.supabase.co'
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'publishable'
-  process.env.TMAP_TRANSIT_ALLOWED_USER_ID = USER_ID
+  process.env.TRANSIT_ALLOWED_USER_ID = USER_ID
   process.env.KAKAO_REST_API_KEY = 'server-only-test-key'
   delete process.env.VERCEL_ENV
+  delete process.env.KAKAO_TRANSIT_PRODUCTION_ENABLED
   getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.clearAllMocks()
+  delete process.env.KAKAO_TRANSIT_PRODUCTION_ENABLED
   delete process.env.VERCEL_ENV
 })
 
@@ -96,8 +98,8 @@ describe('local Kakao public transit function', () => {
       .toEqual({ Authorization: 'KakaoAK server-only-test-key' })
   })
 
-  it('production과 preview에서는 외부 API를 호출하지 않는다', async () => {
-    process.env.VERCEL_ENV = 'production'
+  it.each(['production', 'preview'])('%s에서는 기본적으로 외부 API를 호출하지 않는다', async (environment) => {
+    process.env.VERCEL_ENV = environment
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     const fake = response()
@@ -105,6 +107,42 @@ describe('local Kakao public transit function', () => {
     await handler(request(), fake.value)
 
     expect(fake.status()).toBe(503)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it.each(['production', 'preview'])('%s에서도 서버 플래그와 인증을 통과하면 검색한다', async (environment) => {
+    process.env.VERCEL_ENV = environment
+    process.env.KAKAO_TRANSIT_PRODUCTION_ENABLED = 'true'
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(providerBody)))
+    vi.stubGlobal('fetch', fetchMock)
+    const fake = response()
+    await handler(request(), fake.value)
+    expect(fake.status()).toBe(200)
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it('운영 플래그가 켜져도 허용되지 않은 사용자의 API 호출을 막는다', async () => {
+    process.env.VERCEL_ENV = 'production'
+    process.env.KAKAO_TRANSIT_PRODUCTION_ENABLED = 'true'
+    getUserMock.mockResolvedValue({ data: { user: { id: 'different-user' } }, error: null })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const fake = response()
+    await handler(request(), fake.value)
+    expect(fake.status()).toBe(403)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('새 허용 UUID 설정이 없으면 운영 플래그가 켜져도 실패를 명시하고 호출하지 않는다', async () => {
+    process.env.VERCEL_ENV = 'production'
+    process.env.KAKAO_TRANSIT_PRODUCTION_ENABLED = 'true'
+    delete process.env.TRANSIT_ALLOWED_USER_ID
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const fake = response()
+    await handler(request(), fake.value)
+    expect(fake.status()).toBe(503)
+    expect(fake.body()).toMatchObject({ code: 'SERVER_NOT_CONFIGURED' })
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

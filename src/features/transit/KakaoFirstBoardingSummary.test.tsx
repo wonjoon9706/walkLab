@@ -93,6 +93,14 @@ describe('경로 카드 첫 승차 요약', () => {
     expect(screen.queryByText(/곧 도착|탑승 가능성 높음/)).not.toBeInTheDocument()
   })
 
+  it('운영 차단을 일반 네트워크 오류나 도착 0분으로 표시하지 않는다', () => {
+    render(<KakaoFirstBoardingSummary route={route} access={access}
+      arrival={{ status: 'ready', bus: null, subway: null, error: 'disabled', checkedAt: null, issue: 'service_disabled' }}
+      speedModel={null} now={now} />)
+    expect(screen.getByText('이 환경에서는 실시간 도착정보를 제공하지 않습니다')).toBeInTheDocument()
+    expect(screen.queryByText(/곧 도착|탑승 가능성 높음/)).not.toBeInTheDocument()
+  })
+
   it('도착예정 정보 없음과 제공기관 조회 실패를 구분한다', () => {
     const value = arrival()
     value.bus = { ...value.bus!, status: 'no_service', arrivalSeconds: null, remainingStops: null }

@@ -26,7 +26,6 @@ function leg(mode: TransitRouteLeg['mode'], overrides: Partial<TransitRouteLeg> 
     mode, distanceM: mode === 'WALK' ? 320 : 3_000,
     durationSeconds: mode === 'WALK' ? 300 : 600,
     routeName: mode === 'WALK' ? null : '노선', routeColor: null,
-    routeType: mode === 'SUBWAY' ? 7 : mode === 'BUS' ? 11 : null,
     startName: '출발', endName: '도착', coordinates: [],
     ...overrides,
   }
@@ -79,7 +78,7 @@ describe('T2-3 순차 탑승 가능성 계산', () => {
   it('G7 준비 완료 사용자는 거리와 개인속도로 순수 보행시간을 계산한다', () => {
     const estimate = calculateTransitWalkingLeg(leg('WALK'), 0, readyModel(2))
     expect(estimate.pureWalkingDurationSeconds).toBe(160)
-    expect(estimate.tmapDurationSeconds).toBe(300)
+    expect(estimate.providerDurationSeconds).toBe(300)
     expect(estimate.speedProfile).toMatchObject({
       source: 'personalized', validSessionCount: 5,
     })
@@ -99,7 +98,7 @@ describe('T2-3 순차 탑승 가능성 계산', () => {
     expect(estimate.pureWalkingDurationSeconds).toBe(240)
   })
 
-  it('빠른 속도와 느린 속도의 차이를 TMAP 원본과 별도로 유지한다', () => {
+  it('빠른 속도와 느린 속도의 차이를 경로 원본과 별도로 유지한다', () => {
     const walking = leg('WALK')
     expect(calculateTransitWalkingLeg(walking, 0, readyModel(2)).pureWalkingDurationSeconds).toBe(160)
     expect(calculateTransitWalkingLeg(walking, 0, readyModel(1)).pureWalkingDurationSeconds).toBe(320)

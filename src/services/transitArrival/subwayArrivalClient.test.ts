@@ -3,7 +3,7 @@ import type { SubwayArrivalRequest } from '../../domain/subwayArrival'
 import { createSubwayArrivalClient } from './subwayArrivalClient'
 
 const request: SubwayArrivalRequest = {
-  routeName: '2호선', routeType: 2, trainType: 'normal',
+  routeName: '2호선', trainType: 'normal',
   boardingStation: { providerStationId: 'A', name: '건대입구' },
   nextStation: { providerStationId: 'B', name: '구의' },
   alightingStation: { providerStationId: 'C', name: '잠실' },
@@ -28,6 +28,16 @@ const result = {
 } as const
 
 describe('서울시 지하철 도착정보 클라이언트', () => {
+  it('같은 역에서도 다른 노선·방향의 캐시를 공유하지 않는다', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify(result)))
+    const client = createSubwayArrivalClient({ fetch: fetchMock,
+      getAccessToken: async () => 'test-token', now: () => 1_000 })
+    await client.getSubwayArrival(request)
+    await client.getSubwayArrival({ ...request, routeName: '7호선' })
+    await client.getSubwayArrival({ ...request, nextStation: { providerStationId: null, name: '다른역' } })
+    await client.getSubwayArrival(request)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
   it('JWT와 선택한 지하철 구간만 서버에 전달한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify(result), { status: 200 }),

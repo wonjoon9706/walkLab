@@ -2,7 +2,7 @@ import type { ServerResponse } from 'node:http'
 import { parseKakaoTransitRouteResponse } from '../../src/services/routing/kakaoTransitRouteParser.js'
 import {
   authenticateAllowedTransitUser,
-  isRemoteDeployment,
+  isKakaoTransitEnabled,
   loadLocalEnvironment,
   parseCoordinate,
   readJsonBody,
@@ -25,8 +25,8 @@ export default async function handler(
     sendJson(response, 405, { code: 'INVALID_REQUEST', message: 'POST 요청만 사용할 수 있습니다.' })
     return
   }
-  if (isRemoteDeployment()) {
-    sendJson(response, 503, { code: 'PRODUCTION_DISABLED', message: '카카오 대중교통 경로는 localhost 개발 환경에서만 사용할 수 있습니다.' })
+  if (!isKakaoTransitEnabled()) {
+    sendJson(response, 503, { code: 'PRODUCTION_DISABLED', message: '이 환경의 카카오 대중교통 검색이 활성화되지 않았습니다.' })
     return
   }
   const auth = await authenticateAllowedTransitUser(request)
@@ -83,6 +83,7 @@ export default async function handler(
         code,
         message: code === 'KAKAO_AUTH_ERROR'
           ? '카카오 REST API 권한을 확인해 주세요.'
+          : code === 'QUOTA_EXCEEDED' ? '카카오 대중교통 API 호출 한도를 초과했습니다.'
           : '카카오 대중교통 경로 조회에 실패했습니다.',
       })
       return

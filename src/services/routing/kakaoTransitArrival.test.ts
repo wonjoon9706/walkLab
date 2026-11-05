@@ -100,7 +100,7 @@ describe('카카오 경로 실시간 도착정보 연결', () => {
     expect(createKakaoSubwayArrivalRequest(route('SUBWAY', ['7호선'])))
       .toEqual({
         routeName: '7호선',
-        routeType: null,
+
         trainType: 'normal',
         boardingStation: { providerStationId: null, name: '이수' },
         nextStation: { providerStationId: null, name: '내방' },

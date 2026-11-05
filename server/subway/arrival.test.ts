@@ -16,7 +16,7 @@ function createRequest() {
     method: 'POST',
     headers: { authorization: 'Bearer test-token' },
     body: {
-      routeName: '2호선', routeType: 2, trainType: 'normal',
+      routeName: '2호선', trainType: 'normal',
       boardingStation: { providerStationId: 'A', name: '건대입구' },
       nextStation: { providerStationId: 'B', name: '구의' },
       alightingStation: { providerStationId: 'C', name: '잠실' },
@@ -54,7 +54,7 @@ beforeEach(() => {
   resetSubwayArrivalStateForTests()
   process.env.VITE_SUPABASE_URL = 'https://example.supabase.co'
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'publishable-key'
-  process.env.TMAP_TRANSIT_ALLOWED_USER_ID = USER_ID
+  process.env.TRANSIT_ALLOWED_USER_ID = USER_ID
   process.env.SEOUL_SUBWAY_REALTIME_KEY = 'server-only-key'
   process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED = 'true'
   delete process.env.VERCEL_ENV
@@ -65,7 +65,7 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
   vi.clearAllMocks()
-  delete process.env.TMAP_TRANSIT_ALLOWED_USER_ID
+  delete process.env.TRANSIT_ALLOWED_USER_ID
   delete process.env.SEOUL_SUBWAY_REALTIME_KEY
   delete process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED
   delete process.env.VERCEL_ENV
@@ -103,10 +103,12 @@ describe('Vercel 서울시 지하철 도착정보 함수', () => {
     expect(localDisabled.body()).toMatchObject({ code: 'PRODUCTION_DISABLED' })
 
     process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED = 'true'
-    process.env.VERCEL_ENV = 'production'
-    const production = createResponse()
-    await handler(createRequest(), production.response)
-    expect(production.body()).toMatchObject({ code: 'PRODUCTION_DISABLED' })
+    for (const environment of ['production', 'preview']) {
+      process.env.VERCEL_ENV = environment
+      const production = createResponse()
+      await handler(createRequest(), production.response)
+      expect(production.body()).toMatchObject({ code: 'PRODUCTION_DISABLED' })
+    }
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

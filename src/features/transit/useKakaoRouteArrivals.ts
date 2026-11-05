@@ -15,7 +15,7 @@ export interface KakaoRouteArrival {
   subway: SubwayArrivalInfo | null
   error: string | null
   checkedAt: string | null
-  issue?: 'boarding_unverified' | 'direction_unverified' | 'request_failed' | 'timeout'
+  issue?: 'boarding_unverified' | 'direction_unverified' | 'request_failed' | 'timeout' | 'service_disabled'
 }
 
 const emptyArrival: KakaoRouteArrival = {
@@ -119,7 +119,8 @@ export function useKakaoRouteArrivals() {
           (error instanceof SubwayArrivalError && error.code === 'INVALID_REQUEST')
           ? 'boarding_unverified'
           : message === 'DIRECTION_UNVERIFIED' ? 'direction_unverified'
-            : message === 'ARRIVAL_TIMEOUT' ? 'timeout' : 'request_failed'
+            : error instanceof SubwayArrivalError && error.code === 'PRODUCTION_DISABLED' ? 'service_disabled'
+              : message === 'ARRIVAL_TIMEOUT' ? 'timeout' : 'request_failed'
         publish(route.id, {
           status: 'ready', bus: null, subway: null,
           error: '첫 승차 도착정보를 확인하지 못했습니다. 승차 위치·방향 또는 제공 상태를 확인해 주세요.',

@@ -10,7 +10,7 @@ const STATUS_MESSAGES: Readonly<Record<SubwayArrivalInfo['status'], string>> = {
   no_service: '현재 조건에 맞는 열차 도착정보가 없습니다.',
   no_arrival_data: '서울시 API에 현재 제공된 열차 도착정보가 없습니다. 운행 중단을 의미하지 않습니다.',
   unsupported_station: '서울시 실시간 도착정보를 제공하지 않는 역입니다.',
-  station_match_failed: 'TMAP 역과 서울시 지하철역을 연결하지 못했습니다.',
+  station_match_failed: '경로 역과 서울시 지하철역을 연결하지 못했습니다.',
   review_required: '노선 또는 열차 방향을 안전하게 확인할 수 없습니다.',
   api_error: '지하철 실시간 도착정보를 불러오지 못했습니다.',
 }

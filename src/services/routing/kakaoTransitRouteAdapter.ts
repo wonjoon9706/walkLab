@@ -40,7 +40,7 @@ function toLeg(step: KakaoTransitRoute['steps'][number]): TransitRouteLeg {
     durationSeconds: step.durationSeconds,
     routeName: step.vehicles.map((vehicle) => vehicle.name).join(' / ') || null,
     routeColor: null,
-    routeType: null,
+
     startName: firstStop?.name ?? step.guidance,
     endName: lastStop?.name ?? step.guidance,
     startCoordinate: step.coordinates[0] ?? null,
@@ -66,7 +66,7 @@ function walkingLeg(
     durationSeconds: walk.walkingRoute.providerDurationSeconds,
     routeName: isAccess ? 'G8 승차 접근 도보' : 'G8 목적지 도보',
     routeColor: null,
-    routeType: null,
+
     startName,
     endName,
     startCoordinate: walk.walkingRoute.coordinates[0] ?? null,

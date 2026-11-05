@@ -95,28 +95,27 @@ export function createBusArrivalRequest(
   ) {
     throw new BusArrivalError(
       'INVALID_REQUEST',
-      'TMAP 버스 노선 또는 승차 정류장 정보가 없습니다.',
+      '경로 버스 노선 또는 승차 정류장 정보가 없습니다.',
     )
   }
   const nextStop = leg.stops?.[1]
   return {
     routeName: leg.routeName,
     routeId: leg.routeId ?? null,
-    routeType: leg.routeType,
     boardingStop: {
-      tmapStopId: boardingStop.providerStopId,
+      providerStopId: boardingStop.providerStopId,
       name: boardingStop.name,
       coordinate: boardingStop.coordinate,
     },
     nextStop: nextStop === undefined
       ? null
       : {
-          tmapStopId: nextStop.providerStopId,
+          providerStopId: nextStop.providerStopId,
           name: nextStop.name,
           coordinate: nextStop.coordinate,
         },
     alightingStop: {
-      tmapStopId: alightingStop.providerStopId,
+      providerStopId: alightingStop.providerStopId,
       name: alightingStop.name,
       coordinate: alightingStop.coordinate,
     },

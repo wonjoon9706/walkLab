@@ -181,16 +181,16 @@ function parseCoordinate(
 function parseStop(value: unknown): BusArrivalRequest['boardingStop'] | null {
   if (typeof value !== 'object' || value === null) return null
   const stop = value as {
-    tmapStopId?: unknown
+    providerStopId?: unknown
     name?: unknown
     coordinate?: unknown
   }
-  const tmapStopId = readText(stop.tmapStopId, 100)
+  const providerStopId = readText(stop.providerStopId, 100)
   const name = readText(stop.name, 100)
   const coordinate = parseCoordinate(stop.coordinate)
-  return tmapStopId === null || name === null || coordinate === null
+  return providerStopId === null || name === null || coordinate === null
     ? null
-    : { tmapStopId, name, coordinate }
+    : { providerStopId, name, coordinate }
 }
 
 function parseBusArrivalRequest(value: unknown): BusArrivalRequest | null {
@@ -198,27 +198,18 @@ function parseBusArrivalRequest(value: unknown): BusArrivalRequest | null {
   const body = value as {
     routeName?: unknown
     routeId?: unknown
-    routeType?: unknown
     boardingStop?: unknown
     nextStop?: unknown
     alightingStop?: unknown
   }
   const routeName = readText(body.routeName, 100)
   const routeId = body.routeId === null ? null : readText(body.routeId, 100)
-  const routeType = body.routeType === null
-    ? null
-    : typeof body.routeType === 'number' &&
-        Number.isInteger(body.routeType) &&
-        body.routeType >= 0
-      ? body.routeType
-      : null
   const boardingStop = parseStop(body.boardingStop)
   const nextStop = body.nextStop === null ? null : parseStop(body.nextStop)
   const alightingStop = parseStop(body.alightingStop)
   if (
     routeName === null ||
     (body.routeId !== null && routeId === null) ||
-    (body.routeType !== null && routeType === null) ||
     boardingStop === null ||
     (body.nextStop !== null && nextStop === null) ||
     alightingStop === null
@@ -228,7 +219,6 @@ function parseBusArrivalRequest(value: unknown): BusArrivalRequest | null {
   return {
     routeName,
     routeId,
-    routeType,
     boardingStop,
     nextStop,
     alightingStop,
@@ -341,6 +331,7 @@ function localDiagnosticsEnabled(): boolean {
 
 function localSeoulBusEnabled(): boolean {
   return process.env.VERCEL_ENV !== 'production' &&
+    process.env.VERCEL_ENV !== 'preview' &&
     process.env.NODE_ENV !== 'production' &&
     process.env.SEOUL_BUS_API_LOCAL_ENABLED === 'true'
 }
@@ -379,7 +370,7 @@ export default async function handler(
     return
   }
 
-  const allowedUserId = process.env.TMAP_TRANSIT_ALLOWED_USER_ID?.trim()
+  const allowedUserId = process.env.TRANSIT_ALLOWED_USER_ID?.trim()
   if (allowedUserId === undefined || !UUID_PATTERN.test(allowedUserId)) {
     sendJson(response, 503, { code: 'SERVER_NOT_CONFIGURED', message: 'TAGO 허용 사용자 설정이 올바르지 않습니다.' })
     return

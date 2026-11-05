@@ -9,7 +9,7 @@ function bus(routeName: string, startName: string): TransitRouteLeg {
     durationSeconds: 300,
     routeName,
     routeColor: null,
-    routeType: 11,
+
     startName,
     endName: '다음 정류장',
     coordinates: [],

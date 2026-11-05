@@ -7,7 +7,6 @@ import type { PlaceSearchResult } from '../domain/walkingRoute'
 const {
   getCurrentLocationMock,
   getWalkingRouteMock,
-  getTransitRoutesMock,
   getKakaoTransitRoutesMock,
   getBusArrivalMock,
   getSubwayArrivalMock,
@@ -24,7 +23,6 @@ const {
 } = vi.hoisted(() => ({
   getCurrentLocationMock: vi.fn(),
   getWalkingRouteMock: vi.fn(),
-  getTransitRoutesMock: vi.fn(),
   getKakaoTransitRoutesMock: vi.fn(),
   getBusArrivalMock: vi.fn(),
   getSubwayArrivalMock: vi.fn(),
@@ -90,50 +88,6 @@ const destination: PlaceSearchResult = {
   coordinate: { latitude: 37.5759, longitude: 126.9768 },
 }
 
-const transitResult = {
-  provider: 'tmap-transit',
-  requestedAt: '2026-11-02T00:00:00.000Z',
-  itineraries: [{
-    id: 'transit-1', totalDurationSeconds: 900,
-    totalWalkDurationSeconds: 200, totalWalkDistanceM: 250,
-    totalDistanceM: 4000, transferCount: 1, fareKrw: 1500,
-    legs: [{
-      mode: 'BUS', distanceM: 3750, durationSeconds: 700,
-      routeName: '간선:100', routeColor: '0068B7',
-      routeType: 11,
-      startName: '서울역', endName: '광화문',
-      coordinates: [manualOrigin.coordinate, destination.coordinate],
-      stops: [{
-        index: 0,
-        providerStopId: 'TMAP-SEOUL',
-        name: '서울역',
-        coordinate: manualOrigin.coordinate,
-      }, {
-        index: 1,
-        providerStopId: 'TMAP-GWANGHWAMUN',
-        name: '광화문',
-        coordinate: destination.coordinate,
-      }],
-    }, {
-      mode: 'SUBWAY', distanceM: 1000, durationSeconds: 200,
-      routeName: '수도권2호선', routeColor: '00A84D',
-      routeType: 2,
-      startName: '시청역', endName: '광화문역',
-      coordinates: [manualOrigin.coordinate, destination.coordinate],
-      stops: [{
-        index: 0, providerStopId: 'TMAP-CITYHALL', name: '시청역',
-        coordinate: manualOrigin.coordinate,
-      }, {
-        index: 1, providerStopId: 'TMAP-EULJIRO', name: '을지로입구역',
-        coordinate: manualOrigin.coordinate,
-      }, {
-        index: 2, providerStopId: 'TMAP-GWANGHWAMUN-SUBWAY', name: '광화문역',
-        coordinate: destination.coordinate,
-      }],
-    }],
-  }],
-} as const
-
 const kakaoTransitResult = {
   provider: 'kakao-map-publictraffic',
   requestedAt: '2026-11-02T00:00:00.000Z',
@@ -188,10 +142,6 @@ vi.mock('../services/learning/currentWalkingSpeedModel', () => ({
 vi.mock('../services/routing/walkingRouteClient', () => ({
   walkingRouteClient: { getWalkingRoute: getWalkingRouteMock },
   getSupabaseAccessToken: vi.fn().mockResolvedValue('access-token'),
-}))
-
-vi.mock('../services/routing/transitRouteClient', () => ({
-  transitRouteClient: { getTransitRoutes: getTransitRoutesMock },
 }))
 
 vi.mock('../services/routing/kakaoTransitRouteClient', () => ({
@@ -295,9 +245,9 @@ vi.mock('../features/places/PlaceSearchPanel', () => ({
   ),
 }))
 
+
 beforeEach(() => {
   loadSpeedModelMock.mockReset()
-  getTransitRoutesMock.mockReset()
   getKakaoTransitRoutesMock.mockReset().mockResolvedValue(kakaoTransitResult)
   getBusArrivalMock.mockReset()
   getSubwayArrivalMock.mockReset()
@@ -346,7 +296,6 @@ beforeEach(() => {
     provider: 'kakao-walking-route',
     requestedAt: '2026-10-30T00:00:00.000Z',
   })
-  getTransitRoutesMock.mockResolvedValue(transitResult)
   getBusArrivalMock.mockResolvedValue({
     routeName: '간선 100',
     stopName: '서울역',
