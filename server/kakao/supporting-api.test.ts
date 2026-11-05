@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const { getUser } = vi.hoisted(() => ({ getUser: vi.fn() }))
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ auth: { getUser } }) }))
 import entrances from '../../api/kakao/subway-entrances.js'
-import busEvidence from '../../api/kakao/seoul-bus-evidence.js'
+import busEvidence, { resetSeoulBusEvidenceCacheForTests } from '../../api/kakao/seoul-bus-evidence.js'
 
 const userId = '11111111-1111-4111-8111-111111111111'
 function request(authenticated = true) {
@@ -25,6 +25,8 @@ function response() {
   return { value, status: () => statusCode, body: () => body }
 }
 beforeEach(() => {
+  resetSeoulBusEvidenceCacheForTests()
+  vi.stubEnv('SEOUL_BUS_SERVICE_KEY', 'bus-test-only')
   vi.stubEnv('VERCEL_ENV', 'production')
   vi.stubEnv('KAKAO_TRANSIT_PRODUCTION_ENABLED', '')
   vi.stubEnv('SUPABASE_URL', 'https://example.supabase.co')
@@ -36,6 +38,78 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.clearAllMocks() })
 
 describe('운영 지원 API', () => {
+  it('동일한 진행 중 요청을 공유하고 실패 후 다시 시도할 수 있다', async () => {
+    let finish: (response: Response) => void = () => undefined
+    const pending = new Promise<Response>((resolve) => { finish = resolve })
+    const fetchMock = vi.fn().mockReturnValue(pending)
+    vi.stubGlobal('fetch', fetchMock)
+    const req = request(); req.body = { operation: 'routes_at_stop', arsId: '10001' }
+    const first = response(), second = response()
+    const jobs = [busEvidence(req, first.value), busEvidence(req, second.value)]
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    finish(new Response('{}', { status: 429 }))
+    await Promise.all(jobs)
+    expect(first.body()).toMatchObject({ code: 'QUOTA_EXCEEDED' })
+    expect(second.body()).toMatchObject({ code: 'QUOTA_EXCEEDED' })
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ msgHeader: { headerCd: '0' }, msgBody: { itemList: [] } })))
+    await busEvidence(req, response().value)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('버스 지연과 비정상 응답을 구분하고 외부 URL을 입력받지 않는다', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new DOMException('timeout', 'AbortError'))
+    vi.stubGlobal('fetch', fetchMock)
+    const req = request(); req.body = { operation: 'routes_at_stop', arsId: '10001' }
+    const timeout = response(); await busEvidence(req, timeout.value)
+    expect(timeout.body()).toMatchObject({ code: 'REQUEST_TIMEOUT' })
+    fetchMock.mockResolvedValue(new Response('invalid'))
+    const invalid = response(); await busEvidence(req, invalid.value)
+    expect(invalid.body()).toMatchObject({ code: 'INVALID_RESPONSE' })
+    req.body = { operation: 'route_arrivals', routeId: 'http://example.invalid/' }
+    const malformed = response(); await busEvidence(req, malformed.value)
+    expect(malformed.status()).toBe(400)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+  it.each(['development', 'production', 'preview'])('%s에서도 인증 후 공식 버스 API를 호출하고 빈 결과와 캐시를 유지한다', async (env) => {
+    vi.stubEnv('VERCEL_ENV', env)
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+      msgHeader: { headerCd: '0' }, msgBody: { itemList: [] },
+    })))
+    vi.stubGlobal('fetch', fetchMock)
+    const req = request()
+    req.body = { operation: 'nearby_stops', coordinate: { latitude: 37.5, longitude: 127 } }
+    const first = response(), second = response()
+    await busEvidence(req, first.value)
+    await busEvidence(req, second.value)
+    expect(first.status()).toBe(200)
+    expect(first.body()).toEqual([])
+    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(new URL(String(fetchMock.mock.calls[0][0])).host).toBe('ws.bus.go.kr')
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'error' })
+    expect(JSON.stringify(first.body())).not.toContain('bus-test-only')
+  })
+
+  it.each([401, 429, 500])('버스 제공기관 HTTP %s는 매칭 실패가 아니라 API 오류다', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status })))
+    const req = request(); req.body = { operation: 'routes_at_stop', arsId: '10001' }
+    const result = response()
+    await busEvidence(req, result.value)
+    expect(result.body()).toMatchObject({ code: status === 429 ? 'QUOTA_EXCEEDED'
+      : status === 401 ? 'SEOUL_BUS_AUTH_ERROR' : 'SEOUL_BUS_API_ERROR' })
+  })
+
+  it('버스 인증·키 누락 시 외부 API를 호출하지 않는다', async () => {
+    const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock)
+    const noAuth = response()
+    await busEvidence(request(false), noAuth.value)
+    expect(noAuth.status()).toBe(401)
+    vi.stubEnv('SEOUL_BUS_SERVICE_KEY', '')
+    vi.stubEnv('TAGO_SERVICE_KEY', '')
+    const noKey = response()
+    await busEvidence(request(), noKey.value)
+    expect(noKey.body()).toMatchObject({ code: 'SERVER_NOT_CONFIGURED' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
   it.each(['production', 'preview'])('%s의 출입구 검색은 기본 차단하고 활성화 후 HTTPS로 요청한다', async (environment) => {
     vi.stubEnv('VERCEL_ENV', environment)
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ documents: [] })))
@@ -70,15 +144,4 @@ describe('운영 지원 API', () => {
     expect(result.body()).toMatchObject({ code: status === 401 ? 'KAKAO_AUTH_ERROR' : 'QUOTA_EXCEEDED' })
   })
 
-  it.each(['production', 'preview'])('%s에서는 카카오 플래그로 서울시 HTTP 검증을 열 수 없다', async (environment) => {
-    vi.stubEnv('VERCEL_ENV', environment)
-    vi.stubEnv('KAKAO_TRANSIT_PRODUCTION_ENABLED', 'true')
-    vi.stubEnv('SEOUL_BUS_API_LOCAL_ENABLED', 'true')
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-    const result = response()
-    await busEvidence(request(), result.value)
-    expect(result.body()).toMatchObject({ code: 'PRODUCTION_DISABLED' })
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
 })

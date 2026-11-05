@@ -5,6 +5,8 @@ import type { KakaoTransitRoute } from '../../domain/kakaoTransitRoute'
 import type { PlaceSearchResult, WalkingRoute } from '../../domain/walkingRoute'
 import { WalkingRouteError } from '../../domain/walkingRoute'
 import { resolveAutomaticTransitAccess } from './automaticTransitAccess'
+import { collectKakaoEtaG8WalkEvidence } from './kakaoTransitEta'
+import { resolveTransitRecordingTarget } from '../navigation/transitAccessArrival'
 
 const origin = { latitude: 37, longitude: 127 }
 const stepAnchor = { latitude: 37.0001, longitude: 127.0001 }
@@ -143,6 +145,33 @@ const commonInput = {
 }
 
 describe('resolveAutomaticTransitAccess', () => {
+  it('운영 검증 차단 시 원본 BUS 끝점 참고 G8만 계산하고 자동 종료 좌표는 만들지 않는다', async () => {
+    const provider = busProvider()
+    vi.mocked(provider.getNearbyStops).mockRejectedValue(new Error('PRODUCTION_DISABLED'))
+    const deps = dependencies({ provider })
+    const route = transitRoute('BUS')
+    const result = await resolveAutomaticTransitAccess({ ...commonInput, route }, deps)
+    expect(result.status).toBe('review_required')
+    if (result.status !== 'review_required') return
+    expect(result.diagnosticCode).toBe('PRODUCTION_DISABLED')
+    expect(result.busCandidates).toHaveLength(0)
+    expect(result.referenceWalk?.source).toBe('kakao_bus_path_endpoint')
+    expect(result.referenceWalk?.requestedDestination).toEqual(stepAnchor)
+    expect(deps.getWalkingRoute).toHaveBeenCalledOnce()
+    expect(collectKakaoEtaG8WalkEvidence(result, null)).toHaveLength(1)
+    expect(resolveTransitRecordingTarget(route, result)).toBeNull()
+  })
+
+  it('운영 차단이어도 복수 차량은 참고 좌표로 임의 확정하지 않는다', async () => {
+    const provider = busProvider()
+    vi.mocked(provider.getNearbyStops).mockRejectedValue(new Error('PRODUCTION_DISABLED'))
+    const deps = dependencies({ provider })
+    const route = transitRoute('BUS', ['17', '18'])
+    const result = await resolveAutomaticTransitAccess({ ...commonInput, route }, deps)
+    expect(result.status).toBe('review_required')
+    expect(deps.getWalkingRoute).not.toHaveBeenCalled()
+    expect(resolveTransitRecordingTarget(route, result)).toBeNull()
+  })
   it('동일 이름 반대편을 제외하고 노선 경유 순서가 유일한 버스 정류장을 결정한다', async () => {
     const result = await resolveAutomaticTransitAccess({
       ...commonInput,

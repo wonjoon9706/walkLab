@@ -21,17 +21,29 @@ export function createSeoulBusEvidenceClient(
   async function request(body: Record<string, unknown>, signal: AbortSignal) {
     const token = await dependencies.getAccessToken()
     if (token === null) throw new Error('AUTH_SESSION_MISSING')
-    const response = await dependencies.fetch('/api/kakao/seoul-bus-evidence', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal,
-    })
+    let response: Response
+    try {
+      response = await dependencies.fetch('/api/kakao/seoul-bus-evidence', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal,
+      })
+    } catch (error) {
+      if (signal.aborted) throw error
+      throw new Error('NETWORK_ERROR', { cause: error })
+    }
     const value: unknown = await response.json().catch(() => null)
-    if (!response.ok || !Array.isArray(value)) throw new Error('SEOUL_BUS_EVIDENCE_FAILED')
+    if (!response.ok || !Array.isArray(value)) {
+      const code = typeof value === 'object' && value !== null && 'code' in value ? value.code : null
+      const allowed = ['PRODUCTION_DISABLED', 'SERVER_NOT_CONFIGURED', 'SERVER_AUTH_NOT_CONFIGURED',
+        'AUTH_HEADER_MISSING', 'AUTH_TOKEN_INVALID', 'USER_NOT_ALLOWED', 'REQUEST_TIMEOUT',
+        'QUOTA_EXCEEDED', 'INVALID_RESPONSE', 'NETWORK_ERROR', 'SEOUL_BUS_API_ERROR', 'SEOUL_BUS_AUTH_ERROR']
+      throw new Error(typeof code === 'string' && allowed.includes(code) ? code : 'INVALID_RESPONSE')
+    }
     return value
   }
   return {

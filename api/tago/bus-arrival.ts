@@ -325,15 +325,9 @@ function providerError(
 
 function localDiagnosticsEnabled(): boolean {
   return process.env.VERCEL_ENV !== 'production' &&
-    process.env.NODE_ENV !== 'production' &&
-    process.env.TAGO_BUS_ARRIVAL_DIAGNOSTICS_ENABLED === 'true'
-}
-
-function localSeoulBusEnabled(): boolean {
-  return process.env.VERCEL_ENV !== 'production' &&
     process.env.VERCEL_ENV !== 'preview' &&
     process.env.NODE_ENV !== 'production' &&
-    process.env.SEOUL_BUS_API_LOCAL_ENABLED === 'true'
+    process.env.TAGO_BUS_ARRIVAL_DIAGNOSTICS_ENABLED === 'true'
 }
 
 function isInSeoulServiceArea(request: BusArrivalRequest): boolean {
@@ -379,14 +373,6 @@ export default async function handler(
     sendJson(response, 403, { code: 'USER_NOT_ALLOWED', message: '이 계정은 TAGO API를 사용할 수 없습니다.' })
     return
   }
-  if (
-    process.env.VERCEL_ENV === 'production' &&
-    process.env.TAGO_BUS_ARRIVAL_PRODUCTION_ENABLED !== 'true'
-  ) {
-    sendJson(response, 503, { code: 'PRODUCTION_DISABLED', message: 'Production TAGO 조회가 비활성화되어 있습니다.' })
-    return
-  }
-
   let body: unknown
   try {
     body = await readRequestBody(request)
@@ -401,8 +387,11 @@ export default async function handler(
   }
 
   const serviceKey = process.env.TAGO_SERVICE_KEY?.trim()
-  if (!serviceKey) {
-    sendJson(response, 503, { code: 'SERVER_NOT_CONFIGURED', message: 'TAGO 서버 인증키가 설정되지 않았습니다.' })
+  const seoulServiceKey = process.env.SEOUL_BUS_SERVICE_KEY?.trim() || serviceKey
+  const useSeoul = isInSeoulServiceArea(parsedRequest)
+  if (useSeoul ? !seoulServiceKey : !serviceKey) {
+    sendJson(response, 503, { code: 'SERVER_NOT_CONFIGURED',
+      message: useSeoul ? '서울시 버스 서버 인증키가 설정되지 않았습니다.' : 'TAGO 서버 인증키가 설정되지 않았습니다.' })
     return
   }
 
@@ -424,9 +413,7 @@ export default async function handler(
   const timeoutId = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS)
   try {
     let result: BusArrivalInfo | null = null
-    if (localSeoulBusEnabled() && isInSeoulServiceArea(parsedRequest)) {
-      const seoulServiceKey =
-        process.env.SEOUL_BUS_SERVICE_KEY?.trim() || serviceKey
+    if (useSeoul && seoulServiceKey) {
       const seoulProvider = createSeoulBusProvider({
         fetch,
         serviceKey: seoulServiceKey,
@@ -442,6 +429,16 @@ export default async function handler(
     }
 
     if (result === null) {
+      // 서울시 사용 허용이 다른 공급자의 운영 제한을 함께 해제하지 않는다.
+      if ((process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview') &&
+        process.env.TAGO_BUS_ARRIVAL_PRODUCTION_ENABLED !== 'true') {
+        sendJson(response, 503, { code: 'PRODUCTION_DISABLED', message: '운영 TAGO 조회가 비활성화되어 있습니다.' })
+        return
+      }
+      if (!serviceKey) {
+        sendJson(response, 503, { code: 'SERVER_NOT_CONFIGURED', message: 'TAGO 대체 조회 인증키가 설정되지 않았습니다.' })
+        return
+      }
       const provider = createTagoProvider({ fetch, serviceKey })
       let cityCodes: TagoCityCode[]
       if (cityCodeCache !== null && cityCodeCache.expiresAt > now) {

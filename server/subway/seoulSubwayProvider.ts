@@ -42,7 +42,7 @@ export function createSeoulSubwayProvider(
       const encodedKey = encodeURIComponent(dependencies.serviceKey)
       const response = await dependencies.fetch(
         `${SEOUL_SUBWAY_BASE_URL}/${encodedKey}/json/realtimeStationArrival/0/20/${encodedStationName}`,
-        { method: 'GET', signal },
+        { method: 'GET', signal, redirect: 'error' },
       )
       if (!response.ok) throw new SeoulSubwayHttpError(response.status)
       return parseSeoulSubwayArrivals(await response.text())

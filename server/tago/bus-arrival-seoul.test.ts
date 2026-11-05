@@ -59,7 +59,6 @@ beforeEach(() => {
   process.env.SUPABASE_PUBLISHABLE_KEY = 'publishable-key'
   process.env.TRANSIT_ALLOWED_USER_ID = USER_ID
   process.env.TAGO_SERVICE_KEY = 'server-only-key'
-  process.env.SEOUL_BUS_API_LOCAL_ENABLED = 'true'
   delete process.env.VERCEL_ENV
   getUserMock.mockResolvedValue({
     data: { user: { id: USER_ID } }, error: null,
@@ -67,15 +66,16 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  delete process.env.VERCEL_ENV
   vi.unstubAllGlobals()
   vi.clearAllMocks()
-  delete process.env.SEOUL_BUS_API_LOCAL_ENABLED
   delete process.env.TAGO_SERVICE_KEY
   delete process.env.TRANSIT_ALLOWED_USER_ID
 })
 
 describe('서울시 버스 서버 통합', () => {
-  it('서울 좌표에서는 서울시 3종 API만 호출하고 TAGO를 호출하지 않는다', async () => {
+  it.each(['development', 'production', 'preview'])('%s의 서울 좌표에서는 서울시 API만 호출하고 TAGO를 호출하지 않는다', async (env) => {
+    process.env.VERCEL_ENV = env
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(seoulResponse([{
         stId: '103000189', arsId: '04293', stNm: '우리은행화양동지점',

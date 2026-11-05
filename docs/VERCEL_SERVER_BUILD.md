@@ -49,7 +49,7 @@ npm.cmd run build
 ## 운영 검증 경계
 
 실제 Vercel 원격 빌드·배포는 수행하지 않았다. 클라우드 Node 버전, 환경변수, 프로젝트별 빌드 설정은 배포 단계에서 별도 확인해야 한다.
-이 빌드 수정 당시에는 카카오 localhost 제한을 유지했다. 이후 명시적 운영 플래그 정책은 [카카오 운영 전환 문서](KAKAO_PRODUCTION_ENABLEMENT.md)를 따른다. 서울시 HTTP 운영 차단, JWT·허용 사용자·호출량 제한은 유지한다.
+이 빌드 수정 당시에는 카카오 localhost 제한을 유지했다. 현재 카카오는 [운영 플래그 정책](KAKAO_PRODUCTION_ENABLEMENT.md), 서울시는 사용자 승인된 [서버 HTTP 운영 정책](SEOUL_API_PRODUCTION.md)을 따른다. JWT·허용 사용자·호출량 제한은 유지한다.
 배포 성공이 해당 로컬 전용 기능의 Production 사용 허가를 의미하지 않는다.
 
 기존 미커밋 보행 자동 기록 변경사항은 보존했으며 commit·push·배포하지 않았다.

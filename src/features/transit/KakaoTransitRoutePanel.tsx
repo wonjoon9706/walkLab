@@ -68,7 +68,7 @@ interface DirectWalkResult {
 }
 
 interface RoutePersonalization {
-  status: 'not_started' | 'calculating' | 'complete' | 'unavailable'
+  status: 'not_started' | 'calculating' | 'complete' | 'partial' | 'unavailable'
   detail: DetailResult | null
 }
 
@@ -189,10 +189,38 @@ function kakaoEtaUnavailableText(
   return '카카오 전체시간과 step 시간 구성요소가 모순되어 개인화할 수 없습니다.'
 }
 
+function partialPersonalizationNote(evidence: KakaoEtaG8WalkEvidence[]): string {
+  const access = evidence.some((item) => item.scope === 'access')
+  const egress = evidence.some((item) => item.scope === 'egress')
+  if (evidence.some((item) => item.source === 'kakao_bus_path_endpoint')) {
+    const missing = !access ? ' 출발 도보는 미반영입니다.' : !egress ? ' 하차 후 도보는 미반영입니다.' : ''
+    return `카카오 버스 구간 끝점 기준 참고시간입니다. 실제 정류장 연결은 미확인입니다.${missing}`
+  }
+  return access && !egress ? '출발 도보만 반영한 참고시간입니다. 하차 후 도보는 미반영입니다.'
+    : egress && !access ? '하차 후 도보만 반영한 참고시간입니다. 출발 도보는 미반영입니다.'
+      : '원본에 명시된 도보만 개인화했습니다. 출발·하차 도보는 미반영입니다.'
+}
+
 function personalizationIssue(eta: KakaoTransitEtaResult | null, detail: DetailResult | null): string {
   if (eta?.status === 'unavailable') {
     if (eta.reason === 'INCONSISTENT_DURATION_COMPONENTS') return '공급자의 전체시간과 구간시간이 맞지 않아 개인화 시간을 계산하지 못했습니다.'
     if (eta.reason === 'INVALID_WALKING_STEP') return '원본 도보 구간의 거리·시간이 유효하지 않습니다.'
+  }
+  const apiFailure = [detail?.access, detail?.egress].find((result) =>
+    result?.status === 'review_required' && result.diagnosticCode?.startsWith('API_'))
+  if (apiFailure?.status === 'review_required') {
+    switch (apiFailure.diagnosticCode) {
+      case 'API_NOT_CONFIGURED': return '정류장 조회 서버의 인증키·설정이 필요합니다.'
+      case 'API_AUTH_ERROR': return '정류장 조회 인증 또는 접근 권한을 확인해 주세요.'
+      case 'API_TIMEOUT': return '정류장 조회 응답이 지연되어 도보시간을 확인하지 못했습니다.'
+      case 'API_QUOTA_EXCEEDED': return '정류장 조회 한도를 초과했습니다. 잠시 후 다시 검색해 주세요.'
+      case 'API_INVALID_RESPONSE': return '정류장 제공기관 응답 형식을 확인하지 못했습니다.'
+      default: return '정류장 조회 서버 연결·응답을 확인하지 못했습니다.'
+    }
+  }
+  if ([detail?.access, detail?.egress].some((result) =>
+    result?.status === 'review_required' && result.diagnosticCode === 'PRODUCTION_DISABLED')) {
+    return '운영 환경에서 정류장 검증을 제공하지 않아 도보시간을 확인하지 못했습니다.'
   }
   const evidence = collectKakaoEtaG8WalkEvidence(detail?.access ?? null, detail?.egress ?? null)
   const accessMissing = !evidence.some((item) => item.scope === 'access')
@@ -223,6 +251,18 @@ function getReferenceWalks(
 ): TransitReferenceWalkOverlay[] {
   if (detail === null) return []
   const overlays: TransitReferenceWalkOverlay[] = []
+  for (const result of [detail.access, detail.egress]) {
+    if (result?.status !== 'review_required' || result.referenceWalk === undefined) continue
+    const reference = result.referenceWalk
+    const overlay = createTransitReferenceWalkOverlay({
+      id: `path-reference-${reference.scope}-${reference.stepIndex}`, scope: reference.scope,
+      label: `${reference.locationName} 참고 도보 · 정류장 연결 미확인`,
+      walkingRoute: reference.walkingRoute, requestedStart: reference.requestedStart,
+      requestedDestination: reference.requestedDestination,
+      startGapM: reference.startGapM, destinationGapM: reference.destinationGapM,
+    })
+    if (overlay !== null) overlays.push(overlay)
+  }
 
   if (
     detail.access?.status === 'review_required' &&
@@ -310,6 +350,15 @@ function KakaoDetailDiagnostics({
     <div className="bus-arrival-diagnostics kakao-detail-diagnostics">
       <p>인증키·JWT·요청 URL·좌표는 표시하지 않습니다.</p>
       <p>화면 출발 좌표 출처: {originSource ?? '미확인'}</p>
+      {[detail.access, detail.egress].map((result, index) => result?.status === 'review_required' && (
+        <p key={index}>{index === 0 ? '접근' : '하차'}: {result.diagnosticCode ?? result.reason}
+          {' / '}{result.referenceWalkIssue ?? result.detailReason ?? '-'}
+          {result.referenceWalk !== undefined ? ' / KAKAO_PATH_REFERENCE_UNVERIFIED' : ''}
+          {result.referenceWalk === undefined && result.detailReason === 'WALKING_ENDPOINT_MISMATCH' &&
+            collectKakaoEtaG8WalkEvidence(index === 0 ? detail.access : null,
+              index === 1 ? detail.egress : null).length === 0 ? ' / G8_EVIDENCE_EXCLUDED' : ''}
+        </p>
+      ))}
       <strong>승차 출입구 후보 {accessSubway.length}개</strong>
       <ul>
         {accessSubway.map((candidate) => (
@@ -508,7 +557,7 @@ export function KakaoTransitRoutePanel({
   const selectedPersonalization = selected === null
     ? null
     : personalization.get(selected.id) ?? null
-  const selectedEta = selectedPersonalization?.status === 'complete'
+  const selectedEta = selectedPersonalization?.status === 'complete' || selectedPersonalization?.status === 'partial'
     ? selectedEtaCalculation
     : null
   const replacedWalkingStepIndexes = new Set(
@@ -536,7 +585,7 @@ export function KakaoTransitRoutePanel({
     : null
   const initialPersonalizationCompletedCount = initialCandidateIds.filter((routeId) => {
     const routeStatus = personalization.get(routeId)?.status
-    return routeStatus === 'complete' || routeStatus === 'unavailable'
+    return routeStatus === 'complete' || routeStatus === 'partial' || routeStatus === 'unavailable'
   }).length
   const initialPersonalizationFinished = initialCandidateIds.length > 0 &&
     initialPersonalizationCompletedCount === initialCandidateIds.length
@@ -665,9 +714,9 @@ export function KakaoTransitRoutePanel({
           evidence.some((item) => item.scope === 'access') &&
           evidence.some((item) => item.scope === 'egress')
         updatePersonalization(route.id, {
-          status: eta.status === 'available' && hasCompleteG8Coverage
-            ? 'complete'
-            : 'unavailable',
+          status: eta.status !== 'available' ? 'unavailable'
+            : hasCompleteG8Coverage && !evidence.some((item) => item.source === 'kakao_bus_path_endpoint')
+              ? 'complete' : 'partial',
           detail: nextDetail,
         })
         // 실시간 응답은 개인화 완료 및 목록 표시를 기다리게 하지 않는다.
@@ -792,7 +841,7 @@ export function KakaoTransitRoutePanel({
       )
     }
     setDetail(cached?.detail ?? null)
-    setDetailStatus(cached?.status === 'complete' || cached?.status === 'unavailable'
+    setDetailStatus(cached?.status === 'complete' || cached?.status === 'partial' || cached?.status === 'unavailable'
       ? 'ready'
       : 'loading')
   }
@@ -918,12 +967,6 @@ export function KakaoTransitRoutePanel({
         <TransitAccessRecordingStatus state={accessRecording.state} target={recordingTarget}
           active={accessRecording.isActive} canStart={false} onStart={() => undefined} onStop={() => { void accessRecording.finish() }} />
       )}
-      {import.meta.env.PROD && (
-        <p className="auth-message warning-card">
-          서울시 버스 정류장 검증·실시간 도착정보는 운영 통신 검증 전까지 제공되지 않습니다.
-          일부 도보·개인화 시간과 자동 도착 감지를 확인하지 못할 수 있습니다.
-        </p>
-      )}
       {view === 'list' && (
         <>
           {status === 'loading' && (
@@ -973,7 +1016,7 @@ export function KakaoTransitRoutePanel({
               const routeEta = routeDetail !== null
                 ? calculateKakaoTransitEta(route, speedModel, routeEvidence)
                 : null
-              const personalizedEta = routePersonalization?.status === 'complete' && routeEta?.status === 'available'
+              const personalizedEta = (routePersonalization?.status === 'complete' || routePersonalization?.status === 'partial') && routeEta?.status === 'available'
                 ? routeEta.estimate
                 : null
               const displayedDuration = personalizedEta?.appliedDurationSeconds ??
@@ -998,7 +1041,9 @@ export function KakaoTransitRoutePanel({
                   ? '도보거리 · 선택 후 계산'
                   : walkingDistanceM === null
                     ? '도보거리 계산 불가'
-                    : `도보 ${formatDistance(walkingDistanceM)}${walkingDistanceIsEstimated ? ' · 일부 추정' : ''}`
+                    : routePersonalization?.status === 'partial'
+                      ? `계산된 도보 ${formatDistance(walkingDistanceM)} · 전체 미확정`
+                      : `도보 ${formatDistance(walkingDistanceM)}${walkingDistanceIsEstimated ? ' · 일부 추정' : ''}`
               return (
                 <button
                 key={route.id}
@@ -1019,7 +1064,7 @@ export function KakaoTransitRoutePanel({
                   <strong>{formatDuration(displayedDuration)}</strong>
                   <small>
                     {personalizedEta !== null
-                      ? '개인화 추정'
+                      ? routePersonalization?.status === 'partial' ? '부분 개인화 참고' : '개인화 추정'
                       : routePersonalization?.status === 'calculating'
                         ? '카카오 기본 · 개인화 계산 중'
                         : routePersonalization?.status === 'unavailable'
@@ -1036,6 +1081,9 @@ export function KakaoTransitRoutePanel({
                 )}
                 {routePersonalization?.status === 'unavailable' && (
                   <small className="transit-estimate-note">{personalizationIssue(routeEta, routeDetail)}</small>
+                )}
+                {routePersonalization?.status === 'partial' && (
+                  <small className="transit-estimate-note">{partialPersonalizationNote(routeEvidence)}</small>
                 )}
                 <KakaoRouteFlow route={route} walks={routeEvidence}
                   adjustments={routeEta?.status === 'available' ? routeEta.estimate.g8Adjustments : []} />
@@ -1097,11 +1145,14 @@ export function KakaoTransitRoutePanel({
             {selectedPersonalization?.status === 'unavailable' && (
               <p className="transit-estimate-note">{personalizationIssue(selectedEtaCalculation, detail)}</p>
             )}
+            {selectedPersonalization?.status === 'partial' && (
+              <p className="transit-estimate-note">{partialPersonalizationNote(selectedG8EtaEvidence)}</p>
+            )}
             <dl className="transit-summary-grid">
               <div className="primary-summary">
                 <dt>
                   {detailStatus === 'ready' && selectedEta?.status === 'available'
-                    ? '개인화 추정'
+                    ? selectedPersonalization?.status === 'partial' ? '부분 개인화 참고' : '개인화 추정'
                     : '카카오 기본 예상'}
                 </dt>
                 <dd>
@@ -1120,7 +1171,9 @@ export function KakaoTransitRoutePanel({
             )}
             {detailStatus === 'ready' && selectedEta?.status === 'available' && (
               <p className="transit-estimate-note">
-                개인 보행속도를 반영한 추정값입니다. 일부 도보·대기시간은 실제와 다를 수 있습니다.
+                {selectedPersonalization?.status === 'complete'
+                  ? '출발·하차 G8 도보를 반영한 추정값입니다. 역사 내부 이동·실시간 대기는 미확인입니다.'
+                  : '확보한 도보 구간만 반영한 참고값입니다. 미확인 구간과 실제 대기는 다를 수 있습니다.'}
               </p>
             )}
             <button type="button" className="secondary-button route-map-toggle" onClick={() => setMap(!mapVisible)}>

@@ -1,6 +1,7 @@
 import type { TransitAccessWalk } from './transitAccessWalk'
 import type { TransitAccessReviewReason } from './transitAccessWalk'
 import type { BusArrivalEstimate } from './busArrival'
+import type { TransitPathReferenceWalk, TransitWalkDiagnostic } from './transitAccessWalk'
 import type {
   GeoCoordinate,
   PlaceSearchResult,
@@ -115,6 +116,9 @@ export type AutomaticTransitAccessResult =
       status: 'review_required'
       reason: AutomaticTransitAccessReviewReason
       detailReason?: TransitAccessReviewReason
+      referenceWalk?: TransitPathReferenceWalk
+      referenceWalkIssue?: TransitWalkDiagnostic
+      diagnosticCode?: TransitWalkDiagnostic
       busCandidates: BusBoardingPointCandidateEvidence[]
       busDiagnostics: BusBoardingResolutionDiagnostics | null
       subwayCandidates: SubwayEntranceCandidateEvidence[]

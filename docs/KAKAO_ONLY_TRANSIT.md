@@ -39,7 +39,7 @@
 | `KAKAO_REST_API_KEY` | 기존 서버 키 유지 |
 | 기존 Supabase 공개·서버 설정 / `VITE_KAKAO_MAP_JS_KEY` | 유지 |
 | `TAGO_SERVICE_KEY`, `TAGO_BUS_ARRIVAL_PRODUCTION_ENABLED`, `TAGO_BUS_ARRIVAL_DIAGNOSTICS_ENABLED` | 기존 TAGO 정책 유지 |
-| 서울시 버스·지하철 키와 `*_LOCAL_ENABLED` | 유지. 운영 HTTP 제한을 해제하지 않음 |
+| 서울시 버스·지하철 키 | 유지. 후속 개인 포트폴리오 정책으로 서버 HTTP 호출을 모든 환경에 허용. 로컬 전용 플래그는 제거 |
 | `TMAP_TRANSIT_APP_KEY`, `TMAP_TRANSIT_PRODUCTION_ENABLED`, `VITE_TRANSIT_PROVIDER` | 코드·타입·예제·로컬 설정에서 제거 |
 
 로컬에서는 UUID 값만 새 이름으로 옮겼고 다른 서비스 비밀키는 변경하지 않았다. 키·UUID 값은 출력하지 않았다.
@@ -49,7 +49,7 @@ Vercel 환경변수는 수정하지 않았다. 새 Preview/Production 배포 전
 
 ## 운영 제한
 
-카카오 HTTPS 검색과 서울시 HTTP 실시간/정류장 검증은 별개다. 안전한 서울시 운영 통신 미확인으로 Production/Preview 차단을 유지했다.
+카카오 HTTPS 검색과 서울시 HTTP 실시간/정류장 검증은 별개다. 후속 사용자 승인으로 서울시 서버 HTTP를 모든 환경에 허용한다. 상세 조건은 [서울시 운영 문서](SEOUL_API_PRODUCTION.md)를 따른다.
 실시간 실패가 기본 경로 목록을 막지 않으며 임의 ETA·좌표를 생성하지 않는다. 검증된 첫 승차 좌표가 없으면 자동 도착 감지를 끄고 수동 종료를 안내한다.
 API 진입점은 6개이고 `npm run check:server`가 함수 수, 엄격한 NodeNext 출력, Node ESM 로드 및 405 가드를 검증한다.
 

@@ -2,6 +2,8 @@ import { render, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { TransitItinerary } from '../../domain/transitRoute'
 import type { KakaoMapsNamespace } from './kakaoMapSdk'
+import { createTransitReferenceWalkOverlay } from '../../services/routing/kakaoTransitRouteAdapter'
+import { transitReferenceWalkPresentation } from '../../domain/transitMap'
 
 const { loadKakaoMapSdkMock } = vi.hoisted(() => ({
   loadKakaoMapSdkMock: vi.fn(),
@@ -15,7 +17,7 @@ vi.mock('./kakaoMapSdk', () => ({ loadKakaoMapSdk: loadKakaoMapSdkMock }))
 import { TransitRouteMap } from './TransitRouteMap'
 
 function createFakeMaps() {
-  const polylineOptions: Array<{ strokeColor: string; strokeStyle?: string }> = []
+  const polylineOptions: Array<{ strokeColor: string; strokeStyle?: string; path?: unknown[] }> = []
   const markerOptions: unknown[] = []
   const setPosition = vi.fn()
   const setCenter = vi.fn()
@@ -80,6 +82,24 @@ const itinerary: TransitItinerary = {
 }
 
 describe('TransitRouteMap', () => {
+  it('스냅 불일치 G8 참고선은 실제 반환된 polyline만 별도 스타일로 그린다', async () => {
+    const fake = createFakeMaps()
+    loadKakaoMapSdkMock.mockResolvedValue(fake.maps)
+    const start = { latitude: 37, longitude: 127 }
+    const destination = { latitude: 37.01, longitude: 127.01 }
+    const overlay = createTransitReferenceWalkOverlay({ id: 'snap', scope: 'egress', label: '참고 경로',
+      walkingRoute: { distanceM: 245, providerDurationSeconds: 220,
+        coordinates: [{ latitude: 37.001, longitude: 127 }, { latitude: 37.009, longitude: 127.01 }],
+        requestedAt: '2026-01-01T00:00:00Z', provider: 'kakao-walking-route' },
+      requestedStart: start, requestedDestination: destination, startGapM: 57.2, destinationGapM: 37.7,
+    })
+    if (overlay === null) throw new Error('fixture')
+    render(<TransitRouteMap itinerary={itinerary} start={start} destination={destination} referenceWalks={[overlay]} />)
+    await waitFor(() => expect(fake.polylineOptions).toHaveLength(3))
+    expect(fake.polylineOptions.at(-1)).toMatchObject({ strokeColor: transitReferenceWalkPresentation.strokeColor,
+      strokeStyle: transitReferenceWalkPresentation.strokeStyle })
+    expect(fake.polylineOptions.at(-1)?.path).toHaveLength(2)
+  })
   it('GPS 갱신은 현재 위치 마커만 이동시키고 전체 경로를 다시 만들지 않는다', async () => {
     const fake = createFakeMaps()
     loadKakaoMapSdkMock.mockResolvedValue(fake.maps)

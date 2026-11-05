@@ -5,6 +5,7 @@ import type { KakaoTransitRoute } from '../../domain/kakaoTransitRoute'
 import type { PlaceSearchResult, WalkingRoute } from '../../domain/walkingRoute'
 import { WalkingRouteError } from '../../domain/walkingRoute'
 import { resolveAutomaticTransitEgress } from './automaticTransitEgress'
+import { collectKakaoEtaG8WalkEvidence } from './kakaoTransitEta'
 
 const stepEnd = { latitude: 37.001, longitude: 127.001 }
 const verifiedStop = { latitude: 37.0011, longitude: 127.0011 }
@@ -172,6 +173,19 @@ function dependencies(options?: {
 }
 
 describe('resolveAutomaticTransitEgress', () => {
+  it('지하철 출구 단일 후보의 스냅 초과도 상세 사유와 유효 G8 증거를 보존한다', async () => {
+    const result = await resolveAutomaticTransitEgress({ ...common, route: route('SUBWAY') }, dependencies({
+      places: [exitPlace('exit-1', '도착역 7호선 1번출구')],
+      walking: async ({ start, destination: end }) => walkingRoute(
+        { ...start, latitude: start.latitude + 50 / 111_195 }, end),
+    }))
+    expect(result.status).toBe('review_required')
+    if (result.status !== 'review_required') return
+    expect(result.detailReason).toBe('WALKING_ENDPOINT_MISMATCH')
+    expect(result.diagnosticCode).toBe('G8_SNAP_MISMATCH')
+    expect(result.subwayCandidates[0].walkingRoute).not.toBeNull()
+    expect(collectKakaoEtaG8WalkEvidence(null, result)).toHaveLength(1)
+  })
   it('동일 이름 반대편을 제외하고 검증된 버스 하차점부터 목적지까지 연결한다', async () => {
     const deps = dependencies()
     const result = await resolveAutomaticTransitEgress({
