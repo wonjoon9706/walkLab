@@ -1,6 +1,7 @@
 import type { SubwayEntranceCandidateEvidence } from './transitBoardingPoint'
 import type { TransitEgressWalk } from './transitEgressWalk'
 import type { TransitEgressReviewReason } from './transitEgressWalk'
+import type { TransitPathReferenceWalk, TransitWalkDiagnostic } from './transitAccessWalk'
 import type {
   GeoCoordinate,
   WalkingRoute,
@@ -49,6 +50,9 @@ export type AutomaticTransitEgressResult =
       status: 'review_required'
       reason: AutomaticTransitEgressReviewReason
       detailReason?: TransitEgressReviewReason
+      referenceWalk?: TransitPathReferenceWalk
+      referenceWalkIssue?: TransitWalkDiagnostic
+      diagnosticCode?: TransitWalkDiagnostic
       busCandidates: BusAlightingPointCandidateEvidence[]
       subwayCandidates: SubwayEntranceCandidateEvidence[]
     }

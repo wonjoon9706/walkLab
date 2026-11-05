@@ -56,7 +56,6 @@ beforeEach(() => {
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY = 'publishable-key'
   process.env.TRANSIT_ALLOWED_USER_ID = USER_ID
   process.env.SEOUL_SUBWAY_REALTIME_KEY = 'server-only-key'
-  process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED = 'true'
   delete process.env.VERCEL_ENV
   getUserMock.mockResolvedValue({ data: { user: { id: USER_ID } }, error: null })
 })
@@ -67,11 +66,46 @@ afterEach(() => {
   vi.clearAllMocks()
   delete process.env.TRANSIT_ALLOWED_USER_ID
   delete process.env.SEOUL_SUBWAY_REALTIME_KEY
-  delete process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED
   delete process.env.VERCEL_ENV
 })
 
 describe('Vercel 서울시 지하철 도착정보 함수', () => {
+  it.each([401, 429])('운영 HTTP %s 오류를 열차 정보 없음으로 바꾸지 않는다', async (status) => {
+    process.env.VERCEL_ENV = 'production'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status })))
+    const result = createResponse()
+    await handler(createRequest(), result.response)
+    expect(result.body()).toMatchObject({ code: status === 429 ? 'QUOTA_EXCEEDED' : 'SEOUL_SUBWAY_API_ERROR' })
+  })
+
+  it('운영 타임아웃을 열차 정보 없음과 구분한다', async () => {
+    process.env.VERCEL_ENV = 'production'
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('test', 'AbortError')))
+    const result = createResponse()
+    await handler(createRequest(), result.response)
+    expect(result.body()).toMatchObject({ code: 'REQUEST_TIMEOUT' })
+  })
+  it.each(['development', 'production', 'preview'])('%s에서도 공식 API로 조회하고 시간 보정을 유지한다', async (env) => {
+    process.env.VERCEL_ENV = env
+    const fetchMock = vi.fn().mockImplementation(async () => apiResponse())
+    vi.stubGlobal('fetch', fetchMock)
+    const result = createResponse()
+    await handler(createRequest(), result.response)
+    expect(result.status()).toBe(200)
+    expect(result.body()).toMatchObject({ status: 'available', estimates: [{ arrivalSeconds: 50 }] })
+    expect(new URL(String(fetchMock.mock.calls[0][0])).host).toBe('swopenapi.seoul.go.kr')
+    expect(fetchMock.mock.calls[0][1]).toMatchObject({ redirect: 'error' })
+  })
+
+  it('운영에서도 키 누락이면 오류를 반환하고 외부 호출하지 않는다', async () => {
+    process.env.VERCEL_ENV = 'production'
+    delete process.env.SEOUL_SUBWAY_REALTIME_KEY
+    const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock)
+    const result = createResponse()
+    await handler(createRequest(), result.response)
+    expect(result.body()).toMatchObject({ code: 'SERVER_NOT_CONFIGURED' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
   it('인증된 허용 사용자에게만 정규화된 결과를 반환하고 30초 캐시를 사용한다', async () => {
     const fetchMock = vi.fn().mockResolvedValue(apiResponse())
     vi.stubGlobal('fetch', fetchMock)
@@ -94,21 +128,4 @@ describe('Vercel 서울시 지하철 도착정보 함수', () => {
     expect(JSON.stringify(first.body())).not.toContain('server-only-key')
   })
 
-  it('로컬 활성화 플래그가 없거나 Production이면 외부 호출을 차단한다', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-    delete process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED
-    const localDisabled = createResponse()
-    await handler(createRequest(), localDisabled.response)
-    expect(localDisabled.body()).toMatchObject({ code: 'PRODUCTION_DISABLED' })
-
-    process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED = 'true'
-    for (const environment of ['production', 'preview']) {
-      process.env.VERCEL_ENV = environment
-      const production = createResponse()
-      await handler(createRequest(), production.response)
-      expect(production.body()).toMatchObject({ code: 'PRODUCTION_DISABLED' })
-    }
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
 })

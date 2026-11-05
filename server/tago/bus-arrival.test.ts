@@ -50,17 +50,17 @@ function createRequest() {
       boardingStop: {
         providerStopId: 'PROVIDER-A',
         name: '사당역9번출구앞',
-        coordinate: { latitude: 37.478, longitude: 126.982 },
+        coordinate: { latitude: 36.478, longitude: 126.982 },
       },
       nextStop: {
         providerStopId: 'PROVIDER-B',
         name: '남태령역',
-        coordinate: { latitude: 37.468, longitude: 126.982 },
+        coordinate: { latitude: 36.468, longitude: 126.982 },
       },
       alightingStop: {
         providerStopId: 'PROVIDER-C',
         name: '의왕톨게이트',
-        coordinate: { latitude: 37.45, longitude: 126.982 },
+        coordinate: { latitude: 36.45, longitude: 126.982 },
       },
     },
   } as IncomingMessage & { body: unknown }
@@ -75,7 +75,7 @@ function normalFetchMock() {
       citycode: '12',
       nodeid: 'TAGO-A',
       nodenm: '사당역9번출구앞',
-      gpslati: 37.47801,
+      gpslati: 36.47801,
       gpslong: 126.982,
     }]))
     .mockResolvedValueOnce(providerResponse([{
@@ -85,13 +85,13 @@ function normalFetchMock() {
     }]))
     .mockResolvedValueOnce(providerResponse([{
       routeid: 'TAGO-7800', nodeid: 'TAGO-A', nodenm: '사당역9번출구앞',
-      nodeord: 1, gpslati: 37.47801, gpslong: 126.982, updowncd: '0',
+      nodeord: 1, gpslati: 36.47801, gpslong: 126.982, updowncd: '0',
     }, {
       routeid: 'TAGO-7800', nodeid: 'TAGO-B', nodenm: '남태령역',
-      nodeord: 2, gpslati: 37.468, gpslong: 126.982, updowncd: '0',
+      nodeord: 2, gpslati: 36.468, gpslong: 126.982, updowncd: '0',
     }, {
       routeid: 'TAGO-7800', nodeid: 'TAGO-C', nodenm: '의왕톨게이트',
-      nodeord: 3, gpslati: 37.45, gpslong: 126.982, updowncd: '0',
+      nodeord: 3, gpslati: 36.45, gpslong: 126.982, updowncd: '0',
     }]))
     .mockResolvedValueOnce(providerResponse([{
       nodeid: 'TAGO-A', nodenm: '사당역9번출구앞',
@@ -108,7 +108,6 @@ beforeEach(() => {
   process.env.TAGO_SERVICE_KEY = 'server-only-tago-key'
   delete process.env.VERCEL_ENV
   delete process.env.TAGO_BUS_ARRIVAL_PRODUCTION_ENABLED
-  delete process.env.SEOUL_BUS_API_LOCAL_ENABLED
   getUserMock.mockResolvedValue({
     data: { user: { id: ALLOWED_USER_ID } },
     error: null,
@@ -124,7 +123,6 @@ afterEach(() => {
   delete process.env.VERCEL_ENV
   delete process.env.TAGO_BUS_ARRIVAL_PRODUCTION_ENABLED
   delete process.env.TAGO_BUS_ARRIVAL_DIAGNOSTICS_ENABLED
-  delete process.env.SEOUL_BUS_API_LOCAL_ENABLED
 })
 
 describe('Vercel TAGO 버스 도착정보 함수', () => {
@@ -195,10 +193,9 @@ describe('Vercel TAGO 버스 도착정보 함수', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('Production에서는 서울시 HTTP 플래그가 켜져도 기존 TAGO만 사용한다', async () => {
+  it('Production의 비서울 요청은 기존 TAGO 운영 설정을 따라 조회한다', async () => {
     process.env.VERCEL_ENV = 'production'
     process.env.TAGO_BUS_ARRIVAL_PRODUCTION_ENABLED = 'true'
-    process.env.SEOUL_BUS_API_LOCAL_ENABLED = 'true'
     const fetchMock = normalFetchMock()
     vi.stubGlobal('fetch', fetchMock)
     const fake = createResponse()

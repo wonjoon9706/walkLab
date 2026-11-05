@@ -27,7 +27,9 @@ import { resolveSubwayEntranceCandidates } from './subwayEntranceResolution'
 import type { SubwayEntranceWalkingRouteCache } from './subwayEntranceResolution'
 import { recommendSubwayEntrance } from './subwayEntranceSelection'
 import { buildTransitEgressWalk } from './transitEgressWalk'
+import { MAX_TRANSIT_WALK_ENDPOINT_GAP_M } from './transitAccessWalk'
 import { calculateWalkingRouteEndpointGaps } from './walkingRouteDiagnostics'
+import { getTransitStopFailureDiagnostic, resolveTransitPathReferenceWalk } from './transitPathReferenceWalk'
 
 const MAX_BUS_SEARCH_ANCHOR_DISTANCE_M = 120
 
@@ -59,10 +61,13 @@ function review(
   busCandidates: BusAlightingPointCandidateEvidence[] = [],
   subwayCandidates: AutomaticTransitEgressResult['subwayCandidates'] = [],
   detailReason?: Extract<AutomaticTransitEgressResult, { status: 'review_required' }>['detailReason'],
-): AutomaticTransitEgressResult {
+): Extract<AutomaticTransitEgressResult, { status: 'review_required' }> {
   return {
     status: 'review_required',
     reason,
+    ...(reason.startsWith('MULTIPLE') ? { diagnosticCode: 'MULTIPLE_CANDIDATES' as const }
+      : reason === 'WALKING_ROUTE_FAILED' ? { diagnosticCode: 'G8_REQUEST_FAILED' as const }
+        : detailReason === 'WALKING_ENDPOINT_MISMATCH' ? { diagnosticCode: 'G8_SNAP_MISMATCH' as const } : {}),
     busCandidates,
     subwayCandidates,
     ...(detailReason === undefined ? {} : { detailReason }),
@@ -96,6 +101,7 @@ async function findVerifiedBusCandidates(
   step: KakaoTransitRoute['steps'][number],
   provider: AutomaticTransitEgressDependencies['seoulBusProvider'],
   signal: AbortSignal,
+  diagnostics: { directionMismatch: boolean },
 ): Promise<BusAlightingPointCandidateEvidence[]> {
   const evidence = createKakaoTransitStepMatchingEvidence(step)
   const searchAnchor = step.coordinates.at(-1)
@@ -132,6 +138,7 @@ async function findVerifiedBusCandidates(
             evidence.orderedStopNames,
           )
         ) {
+          diagnostics.directionMismatch = true
           continue
         }
         candidates.push({
@@ -188,15 +195,28 @@ export async function resolveAutomaticTransitEgress(
   }
 
   if (lastTransitStep.mode === 'BUS') {
-    const candidates = await findVerifiedBusCandidates(
-      lastTransitStep,
-      dependencies.seoulBusProvider,
-      input.signal,
-    )
+    const diagnostics = { directionMismatch: false }
+    let candidates: BusAlightingPointCandidateEvidence[]
+    try {
+      candidates = await findVerifiedBusCandidates(
+        lastTransitStep,
+        dependencies.seoulBusProvider,
+        input.signal,
+        diagnostics,
+      )
+    } catch (error) {
+      return { ...review('NO_VERIFIED_BUS_STOP'),
+        diagnosticCode: getTransitStopFailureDiagnostic(error),
+        ...await resolveTransitPathReferenceWalk(input.route, 'egress', input.destination.coordinate,
+          dependencies.getWalkingRoute, input.signal) }
+    }
     if (evidence.hasMultipleVehicleOptions) {
       return review('MULTIPLE_VEHICLE_OPTIONS', candidates)
     }
-    if (candidates.length === 0) return review('NO_VERIFIED_BUS_STOP')
+    if (candidates.length === 0) return { ...review('NO_VERIFIED_BUS_STOP'),
+      diagnosticCode: diagnostics.directionMismatch ? 'STOP_DIRECTION_MISMATCH' : 'STOP_CANDIDATES_EMPTY',
+      ...await resolveTransitPathReferenceWalk(input.route, 'egress', input.destination.coordinate,
+        dependencies.getWalkingRoute, input.signal) }
     if (candidates.length > 1) {
       return review('MULTIPLE_VERIFIED_BUS_STOPS', candidates)
     }
@@ -288,6 +308,12 @@ export async function resolveAutomaticTransitEgress(
       hadWalkingFailure ? 'WALKING_ROUTE_FAILED' : 'NO_VERIFIED_SUBWAY_EXIT',
       [],
       subway.evidence,
+      subway.evidence.some((candidate) => candidate.walkingRouteStatus === 'available' &&
+        candidate.stationNameMatches && candidate.lineMatches && candidate.entranceCategoryMatches &&
+        candidate.closureStatus !== 'confirmed_closed' &&
+        ((candidate.startGapM ?? 0) > MAX_TRANSIT_WALK_ENDPOINT_GAP_M ||
+          (candidate.destinationGapM ?? 0) > MAX_TRANSIT_WALK_ENDPOINT_GAP_M))
+        ? 'WALKING_ENDPOINT_MISMATCH' : undefined,
     )
   }
   const selected = recommendation.selected

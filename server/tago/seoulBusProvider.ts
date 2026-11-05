@@ -79,7 +79,7 @@ export function createSeoulBusProvider(
       })
       const response = await dependencies.fetch(
         `${SEOUL_BUS_BASE_URL}/${operation}?${search.toString()}`,
-        { method: 'GET', signal },
+        { method: 'GET', signal, redirect: 'error' },
       )
       if (!response.ok) throw new SeoulBusHttpError(response.status)
       return response.text()

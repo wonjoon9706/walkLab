@@ -230,6 +230,9 @@ function mapProviderError(error: unknown): {
     }
   }
   if (error instanceof SeoulSubwayHttpError) {
+    if (error.status === 401 || error.status === 403) {
+      return { status: 502, code: 'SEOUL_SUBWAY_API_ERROR', message: '서울시 지하철 인증키 또는 접근 권한을 확인해 주세요.' }
+    }
     if (error.status === 429) {
       return {
         status: 429,
@@ -247,7 +250,7 @@ function mapProviderError(error: unknown): {
     typeof error === 'object' &&
     error !== null &&
     'name' in error &&
-    error.name === 'AbortError'
+    (error.name === 'AbortError' || error.name === 'TimeoutError')
   ) {
     return {
       status: 504,
@@ -299,21 +302,6 @@ export default async function handler(
     sendJson(response, 403, {
       code: 'USER_NOT_ALLOWED',
       message: '이 계정은 지하철 도착정보 API를 사용할 수 없습니다.',
-    })
-    return
-  }
-
-  if (
-    process.env.VERCEL_ENV === 'production' ||
-    process.env.VERCEL_ENV === 'preview' ||
-    process.env.NODE_ENV === 'production' ||
-    process.env.SEOUL_SUBWAY_REALTIME_LOCAL_ENABLED !== 'true'
-  ) {
-    sendJson(response, 503, {
-      code: 'PRODUCTION_DISABLED',
-      message: process.env.VERCEL_ENV === 'production' || process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV === 'production'
-        ? '서울시 지하철의 안전한 운영 통신이 확인되지 않아 실시간 정보를 제공하지 않습니다.'
-        : '서울시 지하철 실시간 조회가 로컬에서 활성화되지 않았습니다.',
     })
     return
   }

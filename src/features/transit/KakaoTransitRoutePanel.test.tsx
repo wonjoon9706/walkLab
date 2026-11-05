@@ -50,7 +50,9 @@ vi.mock('../../services/routing/kakaoTransitArrival', () => ({
   createKakaoSubwayArrivalRequest: vi.fn(() => ({})),
 }))
 vi.mock('../map/TransitRouteMap', () => ({
-  TransitRouteMap: () => <div>선택 경로 지도</div>,
+  TransitRouteMap: ({ referenceWalks = [] }: { referenceWalks?: unknown[] }) => <>
+    <div>선택 경로 지도</div><span data-testid="reference-walk-count">{referenceWalks.length}</span>
+  </>,
 }))
 
 const origin = { latitude: 37, longitude: 127 }
@@ -375,17 +377,35 @@ describe('카카오 개인화 ETA 화면 연결', () => {
     expect(screen.getByRole('button', { name: '도착정보 새로고침' })).toBeEnabled()
   })
 
-  it('하차 도보 미확보로 개인화가 불가능한 이유를 목록과 상세에 표시한다', async () => {
+  it('접근 G8만 있으면 목록과 상세에 같은 부분 개인화 시간과 미반영 구간을 표시한다', async () => {
     resolveEgressMock.mockResolvedValue({
       status: 'review_required', reason: 'NO_VERIFIED_BUS_STOP', busCandidates: [], subwayCandidates: [],
     })
     vi.spyOn(kakaoTransitRouteClient, 'getTransitRoutes').mockResolvedValue(result)
     renderPanel()
-    const message = '하차 정류장의 위치·노선·방향을 확인하지 못해 목적지 도보를 계산하지 못했습니다.'
+    const message = '출발 도보만 반영한 참고시간입니다. 하차 후 도보는 미반영입니다.'
     expect(await screen.findByText(message)).toBeInTheDocument()
-    expect(screen.getByText('카카오 기본 · 개인화 계산 불가')).toBeInTheDocument()
+    expect(screen.getByText('부분 개인화 참고')).toBeInTheDocument()
+    const duration = document.querySelector('.transit-option-time strong')?.textContent
     fireEvent.click(screen.getByText('경로 1').closest('button')!)
     expect(screen.getByText(message)).toBeInTheDocument()
+    expect(document.querySelector('.primary-summary dd')?.textContent).toBe(duration)
+  })
+
+  it('양쪽 G8 성공은 기존 개인화 추정을 유지하고 단일 하차 스냅 실패는 참고선으로 지도에 전달한다', async () => {
+    vi.spyOn(kakaoTransitRouteClient, 'getTransitRoutes').mockResolvedValue(result)
+    resolveEgressMock.mockResolvedValue({ status: 'review_required', reason: 'NO_VERIFIED_SUBWAY_EXIT',
+      detailReason: 'WALKING_ENDPOINT_MISMATCH', busCandidates: [],
+      subwayCandidates: [{ place: { id: 'exit', name: '출구', coordinate: egressCoordinate },
+        walkingRoute: walkingRoute(400, 300, egressCoordinate, destinationCoordinate),
+        walkingRouteStatus: 'available', startGapM: 50, destinationGapM: 0 }],
+    })
+    renderPanel()
+    await screen.findByText('개인화 추정')
+    expect(screen.queryByText('부분 개인화 참고')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('경로 1').closest('button')!)
+    expect(screen.getByTestId('reference-walk-count')).toHaveTextContent('1')
+    expect(screen.getByText('하차 후 추정 도보')).toBeInTheDocument()
   })
 
   it('상세 개인화 조회 실패 후에도 기본 경로와 지도 선택을 유지한다', async () => {
@@ -393,7 +413,7 @@ describe('카카오 개인화 ETA 화면 연결', () => {
     resolveEgressMock.mockRejectedValue(new Error('network'))
     vi.spyOn(kakaoTransitRouteClient, 'getTransitRoutes').mockResolvedValue(result)
     renderPanel()
-    await screen.findByText('카카오 기본 · 개인화 계산 불가')
+    await screen.findByText('부분 개인화 참고')
     fireEvent.click(screen.getByText('경로 1').closest('button')!)
     expect(await screen.findByText('선택 경로 지도')).toBeInTheDocument()
     expect(resolveAccessMock).toHaveBeenCalledTimes(1)

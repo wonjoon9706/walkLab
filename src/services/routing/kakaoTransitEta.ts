@@ -11,6 +11,7 @@ export type KakaoTransitEtaUnavailableReason =
   | 'INCONSISTENT_DURATION_COMPONENTS'
 
 export interface KakaoEtaG8WalkEvidence {
+  source?: 'kakao_bus_path_endpoint'
   scope: 'access' | 'egress'
   walkingRoute: WalkingRoute
   endpointVerification: 'verified' | 'review_required'
@@ -73,6 +74,13 @@ function isUsableWalkingRoute(route: WalkingRoute | null): route is WalkingRoute
 function accessEvidence(
   result: AutomaticTransitAccessResult | null,
 ): KakaoEtaG8WalkEvidence | null {
+  if (result?.status === 'review_required' && result.referenceWalk !== undefined &&
+    isUsableWalkingRoute(result.referenceWalk.walkingRoute)) {
+    const reference = result.referenceWalk
+    return { scope: 'access', source: reference.source, walkingRoute: reference.walkingRoute,
+      endpointVerification: 'review_required', startGapM: reference.startGapM,
+      destinationGapM: reference.destinationGapM, internalTransitTime: 'unknown' }
+  }
   if (result?.status === 'ready') {
     const walk = result.accessWalk
     if (!isUsableWalkingRoute(walk.walkingRoute)) return null
@@ -105,6 +113,13 @@ function accessEvidence(
 function egressEvidence(
   result: AutomaticTransitEgressResult | null,
 ): KakaoEtaG8WalkEvidence | null {
+  if (result?.status === 'review_required' && result.referenceWalk !== undefined &&
+    isUsableWalkingRoute(result.referenceWalk.walkingRoute)) {
+    const reference = result.referenceWalk
+    return { scope: 'egress', source: reference.source, walkingRoute: reference.walkingRoute,
+      endpointVerification: 'review_required', startGapM: reference.startGapM,
+      destinationGapM: reference.destinationGapM, internalTransitTime: 'unknown' }
+  }
   if (result?.status === 'ready') {
     const walk = result.egressWalk
     if (!isUsableWalkingRoute(walk.walkingRoute)) return null

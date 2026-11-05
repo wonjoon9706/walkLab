@@ -32,6 +32,7 @@ import { resolveSubwayEntranceCandidates } from './subwayEntranceResolution'
 import type { SubwayEntranceWalkingRouteCache } from './subwayEntranceResolution'
 import { recommendSubwayEntrance } from './subwayEntranceSelection'
 import { calculateWalkingRouteEndpointGaps } from './walkingRouteDiagnostics'
+import { getTransitStopFailureDiagnostic, resolveTransitPathReferenceWalk } from './transitPathReferenceWalk'
 
 const MAX_BUS_SEARCH_ANCHOR_DISTANCE_M = 120
 
@@ -64,10 +65,13 @@ function review(
   subwayCandidates: SubwayEntranceCandidateEvidence[] = [],
   detailReason?: Extract<AutomaticTransitAccessResult, { status: 'review_required' }>['detailReason'],
   busDiagnostics: BusBoardingResolutionDiagnostics | null = null,
-): AutomaticTransitAccessResult {
+): Extract<AutomaticTransitAccessResult, { status: 'review_required' }> {
   return {
     status: 'review_required',
     reason,
+    ...(reason.startsWith('MULTIPLE') ? { diagnosticCode: 'MULTIPLE_CANDIDATES' as const }
+      : reason === 'WALKING_ROUTE_FAILED' ? { diagnosticCode: 'G8_REQUEST_FAILED' as const }
+        : detailReason === 'WALKING_ENDPOINT_MISMATCH' ? { diagnosticCode: 'G8_SNAP_MISMATCH' as const } : {}),
     busCandidates,
     busDiagnostics,
     subwayCandidates,
@@ -257,11 +261,19 @@ export async function resolveAutomaticTransitAccess(
   }
 
   if (firstTransitStep.mode === 'BUS') {
-    const busResolution = await findVerifiedBusCandidates(
-      input.route,
-      dependencies.seoulBusProvider,
-      input.signal,
-    )
+    let busResolution: Awaited<ReturnType<typeof findVerifiedBusCandidates>>
+    try {
+      busResolution = await findVerifiedBusCandidates(
+        input.route,
+        dependencies.seoulBusProvider,
+        input.signal,
+      )
+    } catch (error) {
+      return { ...review('NO_VERIFIED_BUS_STOP'),
+        diagnosticCode: getTransitStopFailureDiagnostic(error),
+        ...await resolveTransitPathReferenceWalk(input.route, 'access', input.origin.coordinate,
+          dependencies.getWalkingRoute, input.signal) }
+    }
     const candidates = busResolution.candidates
     if (evidence.hasMultipleVehicleOptions) {
       return review(
@@ -273,13 +285,16 @@ export async function resolveAutomaticTransitAccess(
       )
     }
     if (candidates.length === 0) {
-      return review(
+      return { ...review(
         'NO_VERIFIED_BUS_STOP',
         [],
         [],
         undefined,
         busResolution.diagnostics,
-      )
+      ), diagnosticCode: busResolution.diagnostics?.candidates.some((item) => item.outcome === 'DIRECTION_MISMATCH')
+        ? 'STOP_DIRECTION_MISMATCH' : 'STOP_CANDIDATES_EMPTY',
+        ...await resolveTransitPathReferenceWalk(input.route, 'access', input.origin.coordinate,
+          dependencies.getWalkingRoute, input.signal) }
     }
     if (candidates.length > 1) {
       return review(

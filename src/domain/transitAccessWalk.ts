@@ -96,3 +96,22 @@ export type TransitAccessReviewReason =
 export type TransitAccessWalkResult =
   | { status: 'ready'; accessWalk: TransitAccessWalk }
   | { status: 'review_required'; reason: TransitAccessReviewReason }
+
+export type TransitWalkDiagnostic = 'PRODUCTION_DISABLED' | 'STOP_CANDIDATES_EMPTY' |
+  'STOP_DIRECTION_MISMATCH' | 'MULTIPLE_CANDIDATES' | 'STOP_API_FAILED' |
+  'G8_REQUEST_FAILED' | 'G8_SNAP_MISMATCH' | 'G8_EVIDENCE_EXCLUDED' |
+  'API_NOT_CONFIGURED' | 'API_AUTH_ERROR' | 'API_TIMEOUT' | 'API_QUOTA_EXCEEDED' |
+  'API_INVALID_RESPONSE' | 'API_CONNECTION_FAILED' | 'API_PROVIDER_ERROR'
+
+export interface TransitPathReferenceWalk {
+  source: 'kakao_bus_path_endpoint'
+  stepIndex: number
+  scope: 'access' | 'egress'
+  locationName: string
+  requestedStart: GeoCoordinate
+  requestedDestination: GeoCoordinate
+  walkingRoute: WalkingRoute
+  startGapM: number
+  destinationGapM: number
+  verification: 'unverified_boarding_point'
+}
