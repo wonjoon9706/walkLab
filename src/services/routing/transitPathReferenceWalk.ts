@@ -27,12 +27,14 @@ export async function resolveTransitPathReferenceWalk(
   route: KakaoTransitRoute, scope: 'access' | 'egress', outside: GeoCoordinate,
   getWalkingRoute: (request: { start: GeoCoordinate; destination: GeoCoordinate }) => Promise<WalkingRoute>,
   signal: AbortSignal,
+  options?: { sharedEgressEndpoint: true },
 ): Promise<{ referenceWalk?: TransitPathReferenceWalk; referenceWalkIssue?: TransitWalkDiagnostic }> {
   const transit = route.steps.filter((step) => step.mode === 'BUS' || step.mode === 'SUBWAY')
   const step = scope === 'access' ? transit[0] : transit.at(-1)
   // 원본 BUS 구간의 끝점까지만 참고한다. 정류장 ID/좌표 검증 결과로 승격하지 않는다.
-  if (signal.aborted || step?.mode !== 'BUS' || step.vehicles.length !== 1 ||
-    !step.vehicles[0].name.trim() ||
+  if (signal.aborted || step?.mode !== 'BUS' || step.vehicles.length === 0 ||
+    (step.vehicles.length > 1 && !(scope === 'egress' && options?.sharedEgressEndpoint)) ||
+    step.vehicles.some((vehicle) => !vehicle.name.trim()) ||
     step.stops.length < 2 || step.stops.some((stop) => !stop.name.trim()) ||
     step.coordinates.length < 2 || !step.coordinates.every(valid) || !valid(outside)) return {}
   if (step.coordinates[0].latitude === step.coordinates.at(-1)!.latitude &&

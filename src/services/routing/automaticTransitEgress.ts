@@ -2,6 +2,7 @@ import type { SeoulBusProvider } from '../../../server/tago/seoulBusProvider'
 import type { SeoulRouteStopArrival } from '../../domain/seoulBus'
 import type {
   AutomaticTransitEgressResult,
+  BusEgressAmbiguity,
   BusAlightingPointCandidateEvidence,
 } from '../../domain/transitEgressPoint'
 import type {
@@ -32,6 +33,8 @@ import { calculateWalkingRouteEndpointGaps } from './walkingRouteDiagnostics'
 import { getTransitStopFailureDiagnostic, resolveTransitPathReferenceWalk } from './transitPathReferenceWalk'
 
 const MAX_BUS_SEARCH_ANCHOR_DISTANCE_M = 120
+// 참고 도보의 공통 위치 판별 전용이다. 정류장 확정이나 30m 스냅 기준을 대체하지 않는다.
+export const MAX_EGRESS_REFERENCE_LOCATION_GAP_M = 5
 
 export interface AutomaticTransitEgressDependencies {
   seoulBusProvider: Pick<
@@ -175,6 +178,42 @@ function getWalkingErrorCode(error: unknown): WalkingRouteErrorCode {
   return error instanceof WalkingRouteError ? error.code : 'NETWORK_ERROR'
 }
 
+async function resolveAmbiguousBusEgress(
+  input: ResolveAutomaticTransitEgressInput,
+  dependencies: AutomaticTransitEgressDependencies,
+  step: KakaoTransitRoute['steps'][number],
+  reason: 'MULTIPLE_VEHICLE_OPTIONS' | 'MULTIPLE_VERIFIED_BUS_STOPS',
+  candidates: BusAlightingPointCandidateEvidence[],
+): Promise<AutomaticTransitEgressResult> {
+  const distinctStopCount = new Set(candidates.map((candidate) => candidate.stopId)).size
+  const sameLocation = candidates.every((left) => candidates.every((right) =>
+    getCoordinateDistanceMeters(left.coordinate, right.coordinate) <= MAX_EGRESS_REFERENCE_LOCATION_GAP_M,
+  ))
+  const endpoint = step.coordinates.at(-1)
+  const commonEndpoint = endpoint !== undefined && candidates.every((candidate) =>
+    getCoordinateDistanceMeters(candidate.coordinate, endpoint) <= MAX_EGRESS_REFERENCE_LOCATION_GAP_M,
+  )
+  const busAmbiguity: BusEgressAmbiguity = {
+    vehicleOptionCount: step.vehicles.length,
+    candidateCount: candidates.length,
+    distinctStopCount,
+    distinctRouteCount: new Set(candidates.map((candidate) => candidate.routeId)).size,
+    locationRelation: candidates.length === 0 ? 'no_verified_candidates'
+      : !sameLocation ? 'distinct_locations' : distinctStopCount === 1 ? 'same_stop' : 'coincident_stops',
+    // 1개 step의 vehicles는 같은 stops/path에 대한 옵션이다. 후보 위치가 실제로
+    // 갈라진 경우에는 원본 끝점이 있다는 사실만으로 공통 위치라 단정하지 않는다.
+    referenceBasis: candidates.length <= 1 ? 'shared_step_endpoint'
+      : sameLocation ? 'coincident_candidate_locations'
+        : commonEndpoint ? 'common_nearby_endpoint' : 'not_established',
+  }
+  const result = { ...review(reason, candidates), busAmbiguity }
+  if (busAmbiguity.referenceBasis === 'not_established') return result
+  return { ...result,
+    ...await resolveTransitPathReferenceWalk(input.route, 'egress', input.destination.coordinate,
+      dependencies.getWalkingRoute, input.signal, { sharedEgressEndpoint: true }),
+  }
+}
+
 export async function resolveAutomaticTransitEgress(
   input: ResolveAutomaticTransitEgressInput,
   dependencies: AutomaticTransitEgressDependencies,
@@ -211,14 +250,14 @@ export async function resolveAutomaticTransitEgress(
           dependencies.getWalkingRoute, input.signal) }
     }
     if (evidence.hasMultipleVehicleOptions) {
-      return review('MULTIPLE_VEHICLE_OPTIONS', candidates)
+      return resolveAmbiguousBusEgress(input, dependencies, lastTransitStep, 'MULTIPLE_VEHICLE_OPTIONS', candidates)
     }
     if (candidates.length === 0) return { ...review('NO_VERIFIED_BUS_STOP'),
       diagnosticCode: diagnostics.directionMismatch ? 'STOP_DIRECTION_MISMATCH' : 'STOP_CANDIDATES_EMPTY',
       ...await resolveTransitPathReferenceWalk(input.route, 'egress', input.destination.coordinate,
         dependencies.getWalkingRoute, input.signal) }
     if (candidates.length > 1) {
-      return review('MULTIPLE_VERIFIED_BUS_STOPS', candidates)
+      return resolveAmbiguousBusEgress(input, dependencies, lastTransitStep, 'MULTIPLE_VERIFIED_BUS_STOPS', candidates)
     }
     const match = candidates[0]
     let walkingRoute: WalkingRoute

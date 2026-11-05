@@ -352,6 +352,7 @@ function KakaoDetailDiagnostics({
       <p>화면 출발 좌표 출처: {originSource ?? '미확인'}</p>
       {[detail.access, detail.egress].map((result, index) => result?.status === 'review_required' && (
         <p key={index}>{index === 0 ? '접근' : '하차'}: {result.diagnosticCode ?? result.reason}
+          {' / 원본 '}{result.reason}
           {' / '}{result.referenceWalkIssue ?? result.detailReason ?? '-'}
           {result.referenceWalk !== undefined ? ' / KAKAO_PATH_REFERENCE_UNVERIFIED' : ''}
           {result.referenceWalk === undefined && result.detailReason === 'WALKING_ENDPOINT_MISMATCH' &&
@@ -359,6 +360,13 @@ function KakaoDetailDiagnostics({
               index === 1 ? detail.egress : null).length === 0 ? ' / G8_EVIDENCE_EXCLUDED' : ''}
         </p>
       ))}
+      {detail.egress?.status === 'review_required' && detail.egress.busAmbiguity !== undefined && (
+        <p>하차 복수 후보: 차량 {detail.egress.busAmbiguity.vehicleOptionCount},
+          조합 {detail.egress.busAmbiguity.candidateCount},
+          정류장 {detail.egress.busAmbiguity.distinctStopCount}, 노선 {detail.egress.busAmbiguity.distinctRouteCount}
+          {' / '}{detail.egress.busAmbiguity.locationRelation}
+          {' / 참고 근거 '}{detail.egress.busAmbiguity.referenceBasis}</p>
+      )}
       <strong>승차 출입구 후보 {accessSubway.length}개</strong>
       <ul>
         {accessSubway.map((candidate) => (
@@ -407,7 +415,7 @@ function KakaoDetailDiagnostics({
       <ul>
         {egressBus.map((candidate) => (
           <li key={`${candidate.stopId}-${candidate.routeId}`}>
-            {candidate.stopName} / {candidate.routeName}: 방향 순서 검증, G8 {candidate.walkingRouteStatus}, 스냅 {candidate.startGapM?.toFixed(1) ?? '-'}m/{candidate.destinationGapM?.toFixed(1) ?? '-'}m{candidate.walkingErrorCode === null ? '' : `, 오류 ${candidate.walkingErrorCode}`}
+            {candidate.stopName} / {candidate.routeName}: 정류장 ID {candidate.stopId}, 노선 ID {candidate.routeId}, 방향 순서 검증, G8 {candidate.walkingRouteStatus}, 스냅 {candidate.startGapM?.toFixed(1) ?? '-'}m/{candidate.destinationGapM?.toFixed(1) ?? '-'}m{candidate.walkingErrorCode === null ? '' : `, 오류 ${candidate.walkingErrorCode}`}
           </li>
         ))}
       </ul>

@@ -5,7 +5,7 @@ import type { KakaoTransitRoute } from '../../domain/kakaoTransitRoute'
 import type { PlaceSearchResult, WalkingRoute } from '../../domain/walkingRoute'
 import { WalkingRouteError } from '../../domain/walkingRoute'
 import { resolveAutomaticTransitEgress } from './automaticTransitEgress'
-import { collectKakaoEtaG8WalkEvidence } from './kakaoTransitEta'
+import { calculateKakaoTransitEta, collectKakaoEtaG8WalkEvidence } from './kakaoTransitEta'
 
 const stepEnd = { latitude: 37.001, longitude: 127.001 }
 const verifiedStop = { latitude: 37.0011, longitude: 127.0011 }
@@ -172,7 +172,103 @@ function dependencies(options?: {
   }
 }
 
+function ambiguousProvider(stops: Array<{ stopId: string; coordinate: typeof verifiedStop }>,
+  routeNames = ['테스트17', '테스트17']): SeoulBusProvider {
+  return {
+    getNearbyStops: vi.fn(async () => stops.map((stop, index) => ({ ...stop,
+      arsId: `ars-${index}`, name: '마지막정류장' }))),
+    getRoutesAtStop: vi.fn(async () => routeNames.map((routeName, index) => ({
+      routeId: `r-${index}`, routeName, routeType: null,
+    }))),
+    getRouteArrivals: vi.fn(async (routeId) => [
+      routeStop(routeId, 'first', '첫정류장', 1), routeStop(routeId, 'middle', '중간정류장', 2),
+      ...stops.map((stop, index) => routeStop(routeId, stop.stopId, '마지막정류장', index + 3)),
+    ]),
+  }
+}
+
 describe('resolveAutomaticTransitEgress', () => {
+  it('동일 하차 지점을 공유하는 복수 차량은 확정하지 않고 참고 G8만 조회한다', async () => {
+    const inputRoute = route('BUS')
+    inputRoute.steps[0].vehicles.push({ index: 1, name: '테스트18', type: null })
+    const deps = dependencies({ busProvider: ambiguousProvider([
+      { stopId: 'shared-stop', coordinate: verifiedStop },
+    ], ['테스트17', '테스트18']) })
+    const result = await resolveAutomaticTransitEgress({ ...common, route: inputRoute }, deps)
+    expect(result.status).toBe('review_required')
+    if (result.status !== 'review_required') return
+    expect(result.reason).toBe('MULTIPLE_VEHICLE_OPTIONS')
+    expect(result.diagnosticCode).toBe('MULTIPLE_CANDIDATES')
+    expect(result.busAmbiguity).toMatchObject({ vehicleOptionCount: 2, distinctStopCount: 1, distinctRouteCount: 2,
+      locationRelation: 'same_stop', referenceBasis: 'coincident_candidate_locations' })
+    expect(deps.getWalkingRoute).toHaveBeenCalledExactlyOnceWith({ start: stepEnd, destination })
+    expect(result.referenceWalk).toMatchObject({ source: 'kakao_bus_path_endpoint', verification: 'unverified_boarding_point' })
+    expect(result).not.toHaveProperty('egressWalk')
+    const evidence = collectKakaoEtaG8WalkEvidence(null, result)
+    expect(evidence).toHaveLength(1)
+    expect(calculateKakaoTransitEta(inputRoute, null, evidence).status).toBe('available')
+  })
+
+  it('동일 정류장의 복수 노선과 서로 다른 ID의 동일 위치를 구분한다', async () => {
+    for (const stopIds of [['shared-stop'], ['stop-a', 'stop-b']]) {
+      const deps = dependencies({ busProvider: ambiguousProvider(stopIds.map((stopId) => ({ stopId, coordinate: verifiedStop }))) })
+      const result = await resolveAutomaticTransitEgress({ ...common, route: route('BUS') }, deps)
+      expect(result.status).toBe('review_required')
+      if (result.status !== 'review_required') return
+      expect(result.reason).toBe('MULTIPLE_VERIFIED_BUS_STOPS')
+      expect(result.busAmbiguity?.locationRelation).toBe(stopIds.length === 1 ? 'same_stop' : 'coincident_stops')
+      expect(result.referenceWalk?.requestedStart).toEqual(stepEnd)
+      expect(deps.getWalkingRoute).toHaveBeenCalledOnce()
+    }
+  })
+
+  it('위치 차이가 5m 이내인 서로 다른 정류장도 참고로만 허용한다', async () => {
+    const deps = dependencies({ busProvider: ambiguousProvider([
+      { stopId: 'a', coordinate: verifiedStop },
+      { stopId: 'b', coordinate: { ...verifiedStop, latitude: verifiedStop.latitude + 2 / 111_195 } },
+    ]) })
+    const result = await resolveAutomaticTransitEgress({ ...common, route: route('BUS') }, deps)
+    expect(result.status).toBe('review_required')
+    if (result.status !== 'review_required') return
+    expect(result.busAmbiguity?.locationRelation).toBe('coincident_stops')
+    expect(result.referenceWalk).toBeDefined()
+  })
+
+  it('서로 다른 하차 위치에 공통 끝점 근거가 없으면 G8을 요청하지 않는다', async () => {
+    const deps = dependencies({ busProvider: ambiguousProvider([
+      { stopId: 'a', coordinate: verifiedStop },
+      { stopId: 'b', coordinate: { ...verifiedStop, latitude: verifiedStop.latitude + 50 / 111_195 } },
+    ]) })
+    const result = await resolveAutomaticTransitEgress({ ...common, route: route('BUS') }, deps)
+    expect(result.status).toBe('review_required')
+    if (result.status !== 'review_required') return
+    expect(result.busAmbiguity).toMatchObject({ locationRelation: 'distinct_locations', referenceBasis: 'not_established' })
+    expect(result.referenceWalk).toBeUndefined()
+    expect(deps.getWalkingRoute).not.toHaveBeenCalled()
+  })
+
+  it('서로 다른 위치라도 모든 후보가 원본 끝점 5m 안이면 그 끝점까지의 참고 도보만 허용한다', async () => {
+    const deps = dependencies({ busProvider: ambiguousProvider([
+      { stopId: 'a', coordinate: { ...stepEnd, latitude: stepEnd.latitude - 4 / 111_195 } },
+      { stopId: 'b', coordinate: { ...stepEnd, latitude: stepEnd.latitude + 4 / 111_195 } },
+    ]) })
+    const result = await resolveAutomaticTransitEgress({ ...common, route: route('BUS') }, deps)
+    expect(result.status).toBe('review_required')
+    if (result.status !== 'review_required') return
+    expect(result.busAmbiguity).toMatchObject({ locationRelation: 'distinct_locations', referenceBasis: 'common_nearby_endpoint' })
+    expect(result.referenceWalk?.requestedStart).toEqual(stepEnd)
+    expect(deps.getWalkingRoute).toHaveBeenCalledOnce()
+  })
+
+  it('복수 차량이라도 원본 끝점이 없으면 참고 경로를 만들지 않는다', async () => {
+    const inputRoute = route('BUS')
+    inputRoute.steps[0].vehicles.push({ index: 1, name: '테스트18', type: null })
+    inputRoute.steps[0].coordinates = []
+    const deps = dependencies()
+    const result = await resolveAutomaticTransitEgress({ ...common, route: inputRoute }, deps)
+    expect(result.status).toBe('review_required')
+    expect(deps.getWalkingRoute).not.toHaveBeenCalled()
+  })
   it('지하철 출구 단일 후보의 스냅 초과도 상세 사유와 유효 G8 증거를 보존한다', async () => {
     const result = await resolveAutomaticTransitEgress({ ...common, route: route('SUBWAY') }, dependencies({
       places: [exitPlace('exit-1', '도착역 7호선 1번출구')],

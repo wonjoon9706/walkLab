@@ -16,7 +16,7 @@
 
 `automaticTransitEgress.ts`에서 출입구 추천이 없더라도 역명·노선·출구·폐쇄 조건을 통과하고 G8이 성공한 후보의 스냅 초과가 있으면 `detailReason=WALKING_ENDPOINT_MISMATCH`를 붙인다.
 기존 ETA 증거 수집과 참고 지도선 생성 함수를 그대로 재사용한다. 유효 G8 후보가 하나일 때만 ETA 증거로 채택한다.
-복수 후보는 임의 선택하지 않는다. 참고선은 실제 G8 polyline만 그리고 미확인 연결선을 추가하지 않는다.
+복수 후보는 임의 선택하지 않는다. 참고선은 실제 G8 polyline만 그리고 미확인 연결선을 추가하지 않는다. BUS Egress의 공통 끝점 예외는 [복수 후보 참고 도보 정책](EGRESS_MULTIPLE_REFERENCE.md)을 따른다.
 
 ## 버스 검증과 참고 도보 분리
 
@@ -24,7 +24,7 @@
 
 - 입력은 해당 첫/마지막 BUS step의 실제 원본 polyline 끝점이다.
 - BUS 수단, 단일 차량명, 승하차 이름, 최소 두 개의 유효한 경로 좌표, 서로 다른 구간 끝점, 요청 출발/목적 좌표를 검사한다.
-- 좌표가 없거나 비정상, 복수 차량/검증 후보이면 임의 목표를 만들지 않는다.
+- 좌표가 없거나 비정상이면 임의 목표를 만들지 않는다. Access의 복수 차량 제한은 유지하며, BUS Egress는 공통 참고 위치가 확인되는 경우에만 위 정책에 따라 원본 끝점 참고 도보를 허용한다.
 - 실제 G8 API에 요청하고 거리·공급자 시간·polyline·스냅 오차를 보존한다. 직선 도보를 생성하지 않는다.
 - 결과는 `referenceWalk`에 저장하며 실제 `busCandidates`나 `ready` 탑승 위치에 넣지 않는다.
 - 출처 `kakao_bus_path_endpoint`, 원본 step index, 접근/하차 scope, 요청 양 끝 좌표, `unverified_boarding_point`를 보존한다.

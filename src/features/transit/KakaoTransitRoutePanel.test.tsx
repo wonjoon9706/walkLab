@@ -209,6 +209,37 @@ describe('카카오 개인화 ETA 화면 연결', () => {
   })
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs() })
 
+  it('실제 복수 차량 Egress 결과를 점선 지도·부분 ETA에 사용하고 GPS 목표로 승격하지 않는다', async () => {
+    const { resolveAutomaticTransitEgress } = await vi.importActual<typeof import('../../services/routing/automaticTransitEgress')>(
+      '../../services/routing/automaticTransitEgress')
+    const inputRoute: KakaoTransitRouteResult['routes'][number] = { ...result.routes[0], steps: [{
+      index: 0, mode: 'BUS', guidance: '17 / 18', distanceM: 1_000, durationSeconds: 600,
+      coordinates: [origin, egressCoordinate], stops: [{ index: 0, name: '승차' }, { index: 1, name: '하차' }],
+      vehicles: [{ index: 0, name: '17', type: null }, { index: 1, name: '18', type: null }],
+    }] }
+    const reference = await resolveAutomaticTransitEgress({ route: inputRoute,
+      destination: { name: '목적지', coordinate: destinationCoordinate, source: 'user_selected_place', providerPlaceId: null },
+      speed: { kind: 'g7_model', model: speedModel(2) }, signal: new AbortController().signal,
+    }, {
+      seoulBusProvider: { getNearbyStops: async () => [], getRoutesAtStop: async () => [], getRouteArrivals: async () => [] },
+      searchPlaces: async () => [],
+      getWalkingRoute: async ({ start, destination }) => walkingRoute(400, 300, start, destination),
+    })
+    resolveAccessMock.mockResolvedValue({ status: 'review_required', reason: 'MULTIPLE_VEHICLE_OPTIONS',
+      busCandidates: [], subwayCandidates: [], busDiagnostics: null })
+    resolveEgressMock.mockResolvedValue(reference)
+    vi.spyOn(kakaoTransitRouteClient, 'getTransitRoutes').mockResolvedValue({ ...result, routes: [inputRoute] })
+    renderPanel()
+    await screen.findByText('부분 개인화 참고')
+    const duration = document.querySelector('.transit-option-time strong')?.textContent
+    fireEvent.click(screen.getByText('경로 1').closest('button')!)
+    expect(screen.getByTestId('reference-walk-count')).toHaveTextContent('1')
+    expect(screen.getByText('하차 후 추정 도보')).toBeInTheDocument()
+    expect(document.querySelector('.primary-summary dd')?.textContent).toBe(duration)
+    fireEvent.click(screen.getByRole('button', { name: '안내 시작' }))
+    expect(startRecordingMock).toHaveBeenCalledWith(inputRoute.id, null)
+  })
+
   it('실제 앱과 같은 StrictMode 재설정 후에도 요청 결과를 표시한다', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(result)))
     const client = createKakaoTransitRouteClient({ fetch, getAccessToken: async () => 'test-token' })

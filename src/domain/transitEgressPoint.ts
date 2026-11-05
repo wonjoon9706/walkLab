@@ -26,6 +26,15 @@ export interface BusAlightingPointCandidateEvidence {
   walkingErrorCode: WalkingRouteErrorCode | null
 }
 
+export interface BusEgressAmbiguity {
+  vehicleOptionCount: number
+  candidateCount: number
+  distinctStopCount: number
+  distinctRouteCount: number
+  locationRelation: 'no_verified_candidates' | 'same_stop' | 'coincident_stops' | 'distinct_locations'
+  referenceBasis: 'shared_step_endpoint' | 'coincident_candidate_locations' | 'common_nearby_endpoint' | 'not_established'
+}
+
 export type AutomaticTransitEgressReviewReason =
   | 'NO_TRANSIT_STEP'
   | 'TRANSIT_STEP_COORDINATE_MISSING'
@@ -53,6 +62,7 @@ export type AutomaticTransitEgressResult =
       referenceWalk?: TransitPathReferenceWalk
       referenceWalkIssue?: TransitWalkDiagnostic
       diagnosticCode?: TransitWalkDiagnostic
+      busAmbiguity?: BusEgressAmbiguity
       busCandidates: BusAlightingPointCandidateEvidence[]
       subwayCandidates: SubwayEntranceCandidateEvidence[]
     }

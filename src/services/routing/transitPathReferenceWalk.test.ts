@@ -17,6 +17,20 @@ const walking: WalkingRoute = { distanceM: 200, providerDurationSeconds: 180,
   coordinates: [start, end], provider: 'kakao-walking-route', requestedAt: '2026-01-01T00:00:00Z' }
 
 describe('카카오 원본 구간 끝점 참고 도보', () => {
+  it('공통 끝점 옵션은 Egress만 허용하고 Access의 복수 차량 제한은 유지한다', async () => {
+    const input = { ...route, steps: [{ ...route.steps[0], vehicles: [
+      ...route.steps[0].vehicles, { index: 1, name: '18', type: null },
+    ] }] }
+    const getWalking = vi.fn(async () => walking)
+    const signal = new AbortController().signal
+    expect(await resolveTransitPathReferenceWalk(input, 'access', start, getWalking, signal,
+      { sharedEgressEndpoint: true })).toEqual({})
+    expect(getWalking).not.toHaveBeenCalled()
+    const result = await resolveTransitPathReferenceWalk(input, 'egress', start, getWalking, signal,
+      { sharedEgressEndpoint: true })
+    expect(result.referenceWalk?.requestedStart).toEqual(end)
+    expect(result.referenceWalk?.verification).toBe('unverified_boarding_point')
+  })
   it.each(['access', 'egress'] as const)('%s 구간 대응·출처를 보존하고 정류장 ID를 생성하지 않는다', async (scope) => {
     const getWalking = vi.fn().mockImplementation(async (request) => ({ ...walking,
       coordinates: [request.start, request.destination] }))
